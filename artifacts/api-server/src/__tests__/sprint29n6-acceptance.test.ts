@@ -54,11 +54,17 @@ import {
   isResultSufficient,
 } from "../services/evidenceSufficiencyService.js";
 import {
+  buildNoResolvedMandatoryRequirementsMessage,
+  countResolvedMandatoryRequirements,
+  type ValidationResult,
+} from "../services/workValidationService.js";
+import {
   buildEscalationDecision,
   shouldRunDiscovery,
 } from "../services/evidenceEscalationService.js";
 import {
   runEvidenceDiscovery,
+  buildInsufficientEvidenceMessage,
   buildEmptyEvidencePack,
   mergeAcceptedIntoEvidencePack,
 } from "../lib/evidenceDiscovery/discoveryOrchestrator.js";
@@ -434,6 +440,107 @@ describe("P10 — OpenClaw unavailable and escalation required: honest failure",
     });
     expect(v2Sufficiency.status).toBe("SOURCE_NOT_AVAILABLE");
     expect(isResultSufficient(v2Sufficiency)).toBe(false);
+  });
+
+  it("renders unavailable discovery as an actionable source-document message without adapter jargon", () => {
+    const message = buildInsufficientEvidenceMessage(
+      {
+        status: "SOURCE_NOT_AVAILABLE",
+        unresolvedReferences: [{ referencedTitle: "NDIS Care Plan Template" }],
+      },
+      {
+        adapterName:             "null_no_runtime",
+        candidates:              [],
+        accepted:                [],
+        rejected:                [],
+        durationMs:              0,
+        hopsFollowed:            0,
+        adapterAvailable:        false,
+        allCandidatesRejected:   false,
+        producedUsableEvidence:  false,
+      },
+    );
+
+    expect(message).toContain('The following referenced documents were not found: "NDIS Care Plan Template".');
+    expect(message).toContain("Relevant evidence was not found in the organisation library");
+    expect(message).toContain("Add or connect the authoritative source documents for this work, then re-run the task.");
+    expect(message).not.toContain("adapter");
+    expect(message).not.toContain("upload");
+  });
+});
+
+describe("participant preflight resolved mandatory requirement counting", () => {
+  it("returns zero and names required evidence when no mandatory requirement is resolved", () => {
+    const validationResult: ValidationResult = {
+      passed: false,
+      issues: [{
+        rule: "runtime_evidence_pack_present",
+        level: "error",
+        message: "No retrieved evidence reached the runtime EvidencePack.",
+      }],
+      missingItems: ["Participant Document", "Substantive Professional Source"],
+      conflictingItems: [],
+      recommendedAction: "request_information",
+      summary: "Missing participant evidence.",
+      missingEvidenceItems: [
+        {
+          canonicalType: "participant_document",
+          displayLabel: "Participant Document",
+          required: true,
+          reason: "Care plan generation requires evidence linked to the participant subject",
+          searched: true,
+          searchOutcome: "not_found",
+          suggestedAction: "upload_document",
+        },
+        {
+          canonicalType: "substantive_professional_source",
+          displayLabel: "Substantive Professional Source",
+          required: true,
+          reason: "A BSP, risk assessment or intake assessment is required to begin",
+          searched: true,
+          searchOutcome: "not_found",
+          suggestedAction: "upload_document",
+        },
+      ],
+      evidenceSearched: true,
+      clarificationMessage: "",
+    };
+
+    expect(countResolvedMandatoryRequirements(validationResult, buildEmptyEvidencePack(EXEC_ID, ORG_ID))).toBe(0);
+    expect(buildNoResolvedMandatoryRequirementsMessage(validationResult)).toBe(
+      "NeedsOps could not satisfy any mandatory evidence requirement for this participant deliverable. The blueprint needs: Participant Document, Substantive Professional Source. Add or connect at least one authoritative source that satisfies these requirements, such as an intake form, behaviour support plan, occupational therapy report, allied health report, clinical report, or risk assessment, then re-run the task.",
+    );
+  });
+
+  it("returns at least one when a participant care-plan baseline requirement is resolved", () => {
+    const validationResult: ValidationResult = {
+      passed: false,
+      issues: [{
+        rule: "care_plan_substantive_professional_source",
+        level: "error",
+        message: "No substantive professional source was found.",
+      }],
+      missingItems: ["Substantive Professional Source"],
+      conflictingItems: [],
+      recommendedAction: "request_information",
+      summary: "Some evidence is present but substantive professional source is missing.",
+      missingEvidenceItems: [{
+        canonicalType: "substantive_professional_source",
+        displayLabel: "Substantive Professional Source",
+        required: true,
+        reason: "A BSP, risk assessment or intake assessment is required to begin",
+        searched: true,
+        searchOutcome: "not_found",
+        suggestedAction: "upload_document",
+      }],
+      evidenceSearched: true,
+      clarificationMessage: "",
+    };
+    const pack = buildEmptyEvidencePack(EXEC_ID, ORG_ID);
+    pack.chunks = [makeChunk({ sourceType: "participant_document" })];
+    pack.totalChunks = 1;
+
+    expect(countResolvedMandatoryRequirements(validationResult, pack)).toBe(1);
   });
 });
 

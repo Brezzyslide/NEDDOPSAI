@@ -69,7 +69,11 @@ import {
   type WorkPackageManifest,
   type ExcludedSource,
 } from "./workPackageService.js";
-import { validateWorkPackage } from "./workValidationService.js";
+import {
+  buildNoResolvedMandatoryRequirementsMessage,
+  countResolvedMandatoryRequirements,
+  validateWorkPackage,
+} from "./workValidationService.js";
 import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft, type ReviewResult } from "./selfReviewService.js";
@@ -1263,7 +1267,7 @@ export class UnifiedExecutionEngine {
     // PROFESSIONAL_WORK and TRANSIENT lanes are unaffected (requiresEvidence=false).
     // Neither KRS nor OpenClaw run for TRANSIENT requests.
 
-    const laneContext = request.laneContext;
+    let laneContext = request.laneContext;
     if (request.taskId && !laneContext) {
       return {
         outcome:       "execution_failed",
@@ -1271,6 +1275,16 @@ export class UnifiedExecutionEngine {
         blueprintCode: blueprint?.code,
         message:
           "Execution lane context is missing for this task. Evidence and approval gates cannot be evaluated safely.",
+      };
+    }
+    if (subjectParticipantIds.length > 0 && laneContext?.requiresEvidence !== true) {
+      laneContext = {
+        ...laneContext,
+        executionClass: "evidence_bearing",
+        requiresCompletedWork: true,
+        requiresEvidence: true,
+        requiresClaimIntegrity: true,
+        requiresApproval: laneContext?.requiresApproval ?? true,
       };
     }
 
@@ -1541,7 +1555,12 @@ export class UnifiedExecutionEngine {
       },
     }, organizationId).catch(() => {});
 
-    if (!validationResult.passed) {
+    const resolvedMandatoryRequirementCount = countResolvedMandatoryRequirements(validationResult, evidencePack);
+    const participantDeliverableCanProceedWithGaps =
+      subjectParticipantIds.length > 0 &&
+      resolvedMandatoryRequirementCount > 0;
+
+    if (!validationResult.passed && !participantDeliverableCanProceedWithGaps) {
       const missingItems = validationResult.missingEvidenceItems ?? [];
       const clarificationQuestions = validationResult.missingItems.map(
         label => `Can you provide or upload the required ${label}?`,
@@ -1562,7 +1581,9 @@ export class UnifiedExecutionEngine {
         manifestId: manifest.id,
         blueprintCode: blueprint?.code,
         validationResult,
-        message: validationResult.clarificationMessage || validationResult.summary,
+        message: subjectParticipantIds.length > 0
+          ? buildNoResolvedMandatoryRequirementsMessage(validationResult)
+          : validationResult.clarificationMessage || validationResult.summary,
         clarificationQuestions,
       };
     }

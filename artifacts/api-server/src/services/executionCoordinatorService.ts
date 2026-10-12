@@ -49,7 +49,12 @@ import { resolveCanonicalBlueprint } from "./workBlueprintService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import { resolveEvidence, type EvidencePack } from "./knowledgeResolutionService.js";
-import { validateWorkPackage, type ValidationResult } from "./workValidationService.js";
+import {
+  buildNoResolvedMandatoryRequirementsMessage,
+  countResolvedMandatoryRequirements,
+  validateWorkPackage,
+  type ValidationResult,
+} from "./workValidationService.js";
 import { classifyStandardTemplateEvidenceContext } from "./blueprintRuntimeValidationService.js";
 import { classifyExecutionRequest } from "./executionClassifierService.js";
 import { classifyEvidenceMode } from "./evidenceModeService.js";
@@ -213,9 +218,12 @@ async function reconstructFirstDispatchLaneContext(input: {
   ).trim();
   const taskTitle = (input.taskTitle ?? task?.title ?? userRequest).trim();
   if (!userRequest && !taskTitle) return undefined;
+  const subjectParticipantIds = input.taskId
+    ? await getRetrievalSubjectParticipantIdsForTask(input.organizationId, input.taskId).catch(() => [])
+    : [];
 
   const standardTemplate = classifyStandardTemplateEvidenceContext(userRequest || taskTitle);
-  if (standardTemplate.customerExampleOptional) {
+  if (subjectParticipantIds.length === 0 && standardTemplate.customerExampleOptional) {
     return {
       executionClass:         "professional_work",
       requiresCompletedWork:  true,
@@ -237,6 +245,7 @@ async function reconstructFirstDispatchLaneContext(input: {
     shouldDispatchSpecialists: true,
     extractedSearchTerms: [],
     blueprintEvidenceMode,
+    subjectParticipantIds,
     trigger: "task",
   });
 
@@ -369,6 +378,8 @@ async function claimTaskForCheckpointResume(input: {
 
 interface ParticipantEvidencePreflightResult {
   shouldBlock: boolean;
+  resolvedMandatoryRequirementCount: number;
+  noResolvedMandatoryRequirementsMessage: string;
   subjectParticipantIds: string[];
   blueprint: WorkBlueprint | null;
   evidencePack: EvidencePack | null;
@@ -538,14 +549,14 @@ export async function dispatchWorkExecution(
         conversationId,
         correlationId,
         organizationId: input.organizationId,
-        humanLabel: "Participant evidence is required before this work can start.",
+        humanLabel: participantPreflight.noResolvedMandatoryRequirementsMessage,
         clarificationQuestions: questions,
       });
       await postClarificationRequestToConversation(
         input.organizationId,
         conversationId,
         input.taskId!,
-        questions,
+        [participantPreflight.noResolvedMandatoryRequirementsMessage],
         correlationId,
       ).catch(() => {});
     }
@@ -915,6 +926,8 @@ async function evaluateParticipantEvidencePreflight(input: {
   if (!blueprint) {
     return {
       shouldBlock: false,
+      resolvedMandatoryRequirementCount: 0,
+      noResolvedMandatoryRequirementsMessage: "",
       subjectParticipantIds,
       blueprint: null,
       evidencePack: null,
@@ -966,9 +979,12 @@ async function evaluateParticipantEvidencePreflight(input: {
       ? await getSubjectParticipantSupportProfileForTask(input.organizationId, input.taskId)
       : null,
   });
+  const resolvedMandatoryRequirementCount = countResolvedMandatoryRequirements(validationResult, evidencePack);
 
   return {
-    shouldBlock: !validationResult.passed,
+    shouldBlock: !validationResult.passed && resolvedMandatoryRequirementCount === 0,
+    resolvedMandatoryRequirementCount,
+    noResolvedMandatoryRequirementsMessage: buildNoResolvedMandatoryRequirementsMessage(validationResult),
     subjectParticipantIds,
     blueprint,
     evidencePack,
