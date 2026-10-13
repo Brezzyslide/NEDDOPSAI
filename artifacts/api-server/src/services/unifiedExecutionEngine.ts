@@ -1656,6 +1656,19 @@ export class UnifiedExecutionEngine {
     }, organizationId).catch(() => {});
     if (!schemaCheck.passed) {
       const message = `Deliverable output schema is incomplete before synthesis: ${schemaCheck.missingRequirementIds.join(", ")}`;
+      console.warn("[professional_execution_preflight_failed]", {
+        organizationId,
+        tenantId: organizationId,
+        taskId: request.taskId ?? null,
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code ?? null,
+        blueprintMode: manifest.blueprintMode ?? manifest.selectionMetadata?.blueprintMode ?? professionalContext.operation ?? null,
+        canonicalIntent: manifest.canonicalIntent ?? professionalContext.canonicalIntent ?? blueprint?.code ?? null,
+        deliverableType: professionalContext.deliverable.requestedDeliverableType,
+        failedChecks: ["DELIVERABLE_SCHEMA_RESOLVED"],
+        missingRequirementIds: schemaCheck.missingRequirementIds,
+        requirementPlanStatus: preflightCheck.requirementPlanStatus,
+      });
       await persistInlineExecutionSession({
         organizationId,
         taskId: request.taskId,
@@ -1684,6 +1697,18 @@ export class UnifiedExecutionEngine {
     if (!preflightCheck.passed) {
       const undeclaredPlaceholderDetails = formatUndeclaredFactualPlaceholderDetails(preflightCheck.details);
       const message = `Professional execution contract is unresolved before synthesis: ${preflightCheck.failedChecks.join(", ")}${undeclaredPlaceholderDetails ? `. ${undeclaredPlaceholderDetails}` : ""}`;
+      console.warn("[professional_execution_preflight_failed]", {
+        organizationId,
+        tenantId: organizationId,
+        taskId: request.taskId ?? null,
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code ?? null,
+        blueprintMode: manifest.blueprintMode ?? manifest.selectionMetadata?.blueprintMode ?? professionalContext.operation ?? null,
+        canonicalIntent: manifest.canonicalIntent ?? professionalContext.canonicalIntent ?? blueprint?.code ?? null,
+        deliverableType: professionalContext.deliverable.requestedDeliverableType,
+        failedChecks: preflightCheck.failedChecks,
+        requirementPlanStatus: preflightCheck.requirementPlanStatus,
+      });
       await persistInlineExecutionSession({
         organizationId,
         taskId: request.taskId,
