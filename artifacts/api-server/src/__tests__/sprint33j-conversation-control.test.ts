@@ -481,6 +481,34 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(answer.kind).toBe("decline");
   });
 
+  it("normalises common affirmative confirmation phrases instead of matching one literal transcript", () => {
+    const confirmation = pendingConfirmation({
+      action: "NEW_TASK",
+      taskId: undefined,
+      taskTitle: undefined,
+      expectedResponse: "yes_no",
+      proposedTask: {
+        title: "Service Delivery Review for Michael",
+        summary: "Prepare a service delivery review for Michael for July 2026.",
+        priority: "normal",
+      },
+    });
+
+    for (const phrase of [
+      "yes, procced",
+      "yeah go ahead",
+      "yep proceed",
+      "ok do it",
+      "okay, please proceed",
+      "confirmed",
+    ]) {
+      expect(resolvePendingConfirmationAnswer(phrase, confirmation).kind).toBe("confirm");
+    }
+
+    expect(resolvePendingConfirmationAnswer("yes, no don't proceed", confirmation).kind).not.toBe("confirm");
+    expect(resolvePendingConfirmationAnswer("any update on this?", confirmation).kind).toBe("unrelated");
+  });
+
   it("does not treat cancel it as confirmation for a pending task proposal", () => {
     const answer = resolvePendingConfirmationAnswer(
       "cancel it",

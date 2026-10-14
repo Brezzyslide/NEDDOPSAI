@@ -186,6 +186,35 @@ type TaskPlanLaneSeed = {
   requiresApproval?: boolean;
 };
 
+type TaskExecutionPlanRow = Awaited<ReturnType<typeof getTaskPlan>>;
+
+function readTaskPlanData(plan: TaskExecutionPlanRow | null | undefined): TaskPlanLaneSeed | undefined {
+  return isRecord(plan?.planData) ? plan.planData as TaskPlanLaneSeed : undefined;
+}
+
+function readTaskPlanIntent(plan: TaskExecutionPlanRow | null | undefined): string | null {
+  const intent = readTaskPlanData(plan)?.intent;
+  return typeof intent === "string" && intent.trim().length > 0 ? intent.trim() : null;
+}
+
+async function getTaskPlanOrNull(
+  taskId: string,
+  organizationId: string,
+  context: string,
+): Promise<TaskExecutionPlanRow | null> {
+  try {
+    return await getTaskPlan(taskId, organizationId) ?? null;
+  } catch (err) {
+    console.warn("[ExecutionCoordinator] Failed to read task execution plan:", {
+      taskId,
+      organizationId,
+      context,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 async function getTaskLaneContext(
   organizationId: string,
   taskId: string | undefined,
@@ -205,7 +234,7 @@ async function reconstructFirstDispatchLaneContext(input: {
 }): Promise<ExecutionLaneContext | undefined> {
   const task = input.taskId ? await getTaskById(input.taskId, input.organizationId).catch(() => null) : null;
   const plan = input.plan ?? (input.taskId
-    ? ((await getTaskPlan(input.taskId, input.organizationId).catch(() => null))?.planData as TaskPlanLaneSeed | undefined)
+    ? readTaskPlanData(await getTaskPlanOrNull(input.taskId, input.organizationId, "lane_context_reconstruction"))
     : undefined);
   const taskCreation = (task?.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
   const userRequest = (
@@ -233,8 +262,9 @@ async function reconstructFirstDispatchLaneContext(input: {
     };
   }
 
-  const blueprint = plan?.intent
-    ? (await resolveCanonicalBlueprint(plan.intent, input.organizationId).catch(() => null))?.blueprint ?? null
+  const planIntent = typeof plan?.intent === "string" && plan.intent.trim().length > 0 ? plan.intent.trim() : null;
+  const blueprint = planIntent
+    ? (await resolveCanonicalBlueprint(planIntent, input.organizationId).catch(() => null))?.blueprint ?? null
     : null;
   const blueprintEvidenceMode = classifyEvidenceMode(blueprint);
   const classification = classifyExecutionRequest({
@@ -916,10 +946,11 @@ async function evaluateParticipantEvidencePreflight(input: {
   const subjectParticipantIds = await getRetrievalSubjectParticipantIdsForTask(input.organizationId, input.taskId);
   if (subjectParticipantIds.length === 0) return null;
 
-  const plan = await getTaskPlan(input.taskId, input.organizationId).catch(() => null);
+  const plan = await getTaskPlanOrNull(input.taskId, input.organizationId, "participant_evidence_preflight");
+  const planIntent = readTaskPlanIntent(plan);
   const canonicalIntent =
-    deriveProfessionalIntentKey(input.userRequest, plan?.intent ?? null) ??
-    plan?.intent ??
+    deriveProfessionalIntentKey(input.userRequest, planIntent) ??
+    planIntent ??
     null;
   const blueprintSelection = await resolveCanonicalBlueprint(canonicalIntent, input.organizationId).catch(() => null);
   const blueprint = blueprintSelection?.blueprint ?? null;
@@ -1084,11 +1115,13 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     }
 
     const plan = taskId
-      ? await getTaskPlan(taskId, organizationId).catch(() => null)
+      ? await getTaskPlanOrNull(taskId, organizationId, "background_canonical_intent")
       : null;
+    const planIntent = readTaskPlanIntent(plan);
     const canonicalIntent =
       input.canonicalIntent ??
-      deriveProfessionalIntentKey(userRequest, plan?.intent ?? null) ??
+      deriveProfessionalIntentKey(userRequest, planIntent) ??
+      planIntent ??
       undefined;
     const laneContext = await requireTaskLaneContext({
       organizationId,
@@ -1096,7 +1129,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       laneContext: input.laneContext,
       userRequest,
       taskTitle: input.taskTitle,
-      plan: plan?.planData as TaskPlanLaneSeed | undefined,
+      plan: readTaskPlanData(plan),
       phase: "first_dispatch",
     });
     if (taskId && plan) {
