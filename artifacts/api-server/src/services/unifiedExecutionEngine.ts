@@ -429,6 +429,37 @@ export type UnifiedExecutionResult =
   | { trigger: "conversation"; runResult: SpecialistRunResult }
   | { trigger: "task" | "scheduled" | "workflow"; workResult: ExecuteWorkResult };
 
+function readPlanIntentFromPlanData(planData: Record<string, unknown>): string | undefined {
+  const intent = planData["intent"];
+  return typeof intent === "string" && intent.trim().length > 0 ? intent.trim() : undefined;
+}
+
+function formatIntentInputValue(value: unknown): string {
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  return JSON.stringify(value);
+}
+
+function buildIntentUnresolvedMessage(input: {
+  canonicalIntent?: string;
+  taskPlanIntent?: string;
+  blueprintCode?: string;
+  blueprintId?: string;
+  userRequest: string;
+  taskTitle?: string;
+}): string {
+  const checked = [
+    ["canonicalIntent", input.canonicalIntent],
+    ["taskPlanIntent", input.taskPlanIntent],
+    ["blueprintCode", input.blueprintCode],
+    ["blueprintId", input.blueprintId],
+    ["userRequest", input.userRequest],
+    ["taskTitle", input.taskTitle],
+  ].map(([key, value]) => `${key}=${formatIntentInputValue(value)}`);
+  return `professional_execution_intent_unresolved: Could not derive execution intent before work package assembly. Inputs checked: ${checked.join("; ")}.`;
+}
+
 // ─── Specialist constants (from specialistIntelligenceService) ────────────────
 
 const ACTIVE_SPECIALIST_VERSIONS: Record<string, string> = {
@@ -982,6 +1013,7 @@ export class UnifiedExecutionEngine {
     //   - the newest row correctly represents re-planning when multiple rows exist.
     // This rule must be revisited if a formal plan-version lifecycle is introduced.
     let selectedSpecialist: string | undefined;
+    let taskPlanIntent: string | undefined;
 
     if (request.taskId) {
       const [plan] = await withUnifiedExecutionTenant(organizationId, "task.execution_plan.get", async (client) => client
@@ -1006,6 +1038,7 @@ export class UnifiedExecutionEngine {
 
       const planData       = plan.planData as Record<string, unknown>;
       const planSpecialist = planData.primarySpecialist;
+      taskPlanIntent       = readPlanIntentFromPlanData(planData);
 
       if (!planSpecialist || typeof planSpecialist !== "string" || !planSpecialist.trim()) {
         return {
@@ -1044,9 +1077,45 @@ export class UnifiedExecutionEngine {
       await progress("selecting_blueprint");
       blueprint = null;
       const t1 = Date.now();
+      const effectiveCanonicalIntent = request.canonicalIntent ?? taskPlanIntent;
+
+      if (request.taskId && !effectiveCanonicalIntent && !request.blueprintCode && !request.blueprintId) {
+        const message = buildIntentUnresolvedMessage({
+          canonicalIntent: request.canonicalIntent,
+          taskPlanIntent,
+          blueprintCode: request.blueprintCode,
+          blueprintId: request.blueprintId,
+          userRequest,
+          taskTitle: request.title,
+        });
+        console.warn("[professional_execution_intent_unresolved]", {
+          organizationId,
+          tenantId: organizationId,
+          taskId: request.taskId,
+          canonicalIntent: request.canonicalIntent ?? null,
+          taskPlanIntent: taskPlanIntent ?? null,
+          blueprintCode: request.blueprintCode ?? null,
+          blueprintId: request.blueprintId ?? null,
+          userRequest,
+          taskTitle: request.title ?? null,
+        });
+        return {
+          outcome: "validation_failed",
+          message,
+          failureMetadata: {
+            failedStage: "professional_execution_intent_resolution",
+            canonicalIntent: request.canonicalIntent ?? null,
+            taskPlanIntent: taskPlanIntent ?? null,
+            blueprintCode: request.blueprintCode ?? null,
+            blueprintId: request.blueprintId ?? null,
+            userRequest,
+            taskTitle: request.title ?? null,
+          },
+        };
+      }
 
       const canonicalSelection = await resolveCanonicalBlueprint(
-        request.canonicalIntent ?? request.blueprintCode,
+        effectiveCanonicalIntent ?? request.blueprintCode,
         organizationId,
       );
 
@@ -1068,7 +1137,7 @@ export class UnifiedExecutionEngine {
           confidence: 1.0,
           matchedKeywords: [request.blueprintId],
           fallbackUsed: false,
-          ...(blueprint ? deriveBlueprintSelectionFloor(blueprint, request.canonicalIntent ?? request.blueprintCode ?? userRequest) : {}),
+          ...(blueprint ? deriveBlueprintSelectionFloor(blueprint, effectiveCanonicalIntent ?? request.blueprintCode ?? userRequest) : {}),
         };
       } else if (request.blueprintCode) {
         const selection = await selectBlueprint(request.blueprintCode, organizationId);
@@ -1100,7 +1169,7 @@ export class UnifiedExecutionEngine {
       if (selectionMeta) {
         const operation = deriveProfessionalOperation(
           userRequest,
-          selectionMeta.canonicalIntent ?? request.canonicalIntent ?? request.blueprintCode ?? null,
+          selectionMeta.canonicalIntent ?? effectiveCanonicalIntent ?? request.blueprintCode ?? null,
         );
         selectionMeta.deliverableStandardisation = subjectParticipantIds.length > 0
           ? "participant_specific"

@@ -96,6 +96,7 @@ export interface PendingConversationConfirmation {
   taskTitle?: string;
   approvalId?: string;
   sourceMessageId?: string;
+  sourceUserRequest?: string;
   proposedTask?: {
     title: string;
     summary: string;
@@ -181,15 +182,52 @@ const STATUS_PATTERNS = [
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
 const MODIFY_PATTERNS = [/\b(add|include|change|modify|update|revise)\b.*\b(that|this|report|task|draft|it)\b/i];
 const NEW_TASK_PATTERNS = [/\b(also|now|next)\b.*\b(prepare|create|check|review|audit|draft|build)\b/i, /\bprepare\b.*\b(roster|report|policy|plan)\b/i];
-const CONFIRM_PATTERNS = [
-  /^(yes|yep|yeah|confirm|confirmed|go ahead|proceed|procced|procceed|please proceed|please procced|please procceed|do it|cancel it|cancel that|okay proceed|ok proceed)\.?$/i,
-  /^(confirm|confirmed|yes|yep|yeah|ok|okay)[, ]+(please )?(go ahead|proceed|create|do it)\.?$/i,
-];
 const DECLINE_PATTERNS = [/^(no|nope|no[, ]+don'?t proceed|no[, ]+do not proceed|don't|do not|don'?t cancel|keep it|leave it|not anymore|do not proceed)\.?$/i];
 const CANCEL_CONFIRM_PATTERN = /^(cancel it|cancel that)\.?$/i;
+const AFFIRMATION_TOKENS = new Set([
+  "yes",
+  "y",
+  "yep",
+  "yeah",
+  "ok",
+  "okay",
+  "confirm",
+  "confirmed",
+  "approve",
+  "approved",
+  "proceed",
+  "procced",
+  "procceed",
+]);
+const CONFIRMATION_ACTION_PHRASES = [
+  /\bgo ahead\b/i,
+  /\bdo it\b/i,
+  /\bplease proceed\b/i,
+  /\bplease procced\b/i,
+  /\bplease procceed\b/i,
+];
+const CONTRADICTION_TOKENS = new Set(["no", "nope", "not", "dont", "don't", "cannot", "cant", "can't", "stop", "cancel"]);
 
 function matches(patterns: RegExp[], text: string): boolean {
   return patterns.some(pattern => pattern.test(text));
+}
+
+function normaliseConfirmationTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/[^a-z0-9']+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isAffirmativeConfirmation(text: string): boolean {
+  const tokens = normaliseConfirmationTokens(text);
+  if (tokens.length === 0) return false;
+  if (tokens.some(token => CONTRADICTION_TOKENS.has(token))) return false;
+  return tokens.some(token => AFFIRMATION_TOKENS.has(token)) ||
+    CONFIRMATION_ACTION_PHRASES.some(pattern => pattern.test(text));
 }
 
 export function responseRequestsTaskConfirmation(text: string | undefined): boolean {
@@ -724,6 +762,7 @@ export async function persistConversationConfirmation(input: {
     taskTitle: input.taskTitle,
     approvalId: input.approvalId,
     sourceMessageId: input.sourceMessageId,
+    sourceUserRequest: input.proposedTask?.sourceUserRequest,
     proposedTask: input.proposedTask,
     candidateTasks: input.candidateTasks ?? [],
     createdAt: new Date().toISOString(),
@@ -875,8 +914,8 @@ export function resolvePendingConfirmationAnswer(
   if (CANCEL_CONFIRM_PATTERN.test(trimmed)) {
     return confirmation.action === "CANCEL_TASK" ? { kind: "confirm" } : { kind: "decline" };
   }
-  if (matches(CONFIRM_PATTERNS, trimmed)) return { kind: "confirm" };
   if (matches(DECLINE_PATTERNS, trimmed)) return { kind: "decline" };
+  if (isAffirmativeConfirmation(trimmed)) return { kind: "confirm" };
   if (matches(NEW_TASK_PATTERNS, trimmed) || matches(STATUS_PATTERNS, trimmed) || matches(SWITCH_PATTERNS, trimmed)) {
     return { kind: "unrelated" };
   }

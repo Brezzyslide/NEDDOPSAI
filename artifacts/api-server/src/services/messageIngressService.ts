@@ -1052,12 +1052,19 @@ async function maybeHandlePendingConfirmation(input: {
       conversationId: input.conversationId,
       taskId: input.taskId,
     });
+    const sourceUserRequest = readString(input.confirmation.proposedTask.sourceUserRequest)
+      ?? readString(input.confirmation.sourceUserRequest)
+      ?? input.confirmation.proposedTask.summary;
+    const proposedTask = {
+      ...input.confirmation.proposedTask,
+      sourceUserRequest,
+    };
     const created = await autoCreateAndDispatch({
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       requesterId: input.userId,
       idempotencyKey: `conversation_confirmation:${input.confirmation.id}`,
-      proposedTask: input.confirmation.proposedTask,
+      proposedTask,
       subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined,
     });
     await markConversationConfirmationResolved({
