@@ -32,7 +32,11 @@ async function loadModules() {
     import("../services/autoDispatchService.js"),
     "importing auto dispatch service",
   );
-  return { dbModule, drizzle, conversationControl, autoDispatch };
+  const messageIngress = await withTimeout(
+    import("../services/messageIngressService.js"),
+    "importing message ingress service",
+  );
+  return { dbModule, drizzle, conversationControl, autoDispatch, messageIngress };
 }
 
 async function alignTaskCreationIdempotencyFkWithCommittedMigration(
@@ -56,17 +60,18 @@ async function alignTaskCreationIdempotencyFkWithCommittedMigration(
   `);
 }
 
-async function seedAutoDispatchFixture() {
+async function seedAutoDispatchFixture(input: { bindParticipant?: boolean } = {}) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const organizationId = `org-intent-${suffix}`;
   const userId = `user-intent-${suffix}`;
   const conversationId = `conv-intent-${suffix}`;
+  const participantId = `participant-micheal-${suffix}`;
   const blueprintId = `bp-care-plan-${suffix}`;
   const mappingId = `bim-care-plan-${suffix}`;
   const originalRequest = "i want a NDIS care plan template";
 
   const modules = await loadModules();
-  const { dbModule, drizzle, conversationControl, autoDispatch } = modules;
+  const { dbModule, drizzle, conversationControl } = modules;
   const {
     db,
     organizationsTable,
@@ -78,6 +83,7 @@ async function seedAutoDispatchFixture() {
     tenantUsageAllowancesTable,
     usersTable,
     membershipsTable,
+    participantsTable,
     conversationsTable,
     workBlueprintsTable,
     blueprintIntentMappingsTable,
@@ -165,6 +171,15 @@ async function seedAutoDispatchFixture() {
     status: "active",
     joinedAt: new Date(),
   });
+  await db.insert(participantsTable).values({
+    id: participantId,
+    organizationId,
+    displayName: "Micheal Rocca",
+    preferredName: "Micheal",
+    externalParticipantId: `MR-${suffix}`,
+    status: "active",
+    metadata: {},
+  });
   await db.insert(workBlueprintsTable).values({
     id: blueprintId,
     organizationId,
@@ -241,6 +256,7 @@ async function seedAutoDispatchFixture() {
       summary: "Create a standard reusable NDIS care plan template.",
       priority: "normal",
       sourceUserRequest: originalRequest,
+      subjectParticipantIds: input.bindParticipant ? [participantId] : undefined,
     },
   });
 
@@ -251,6 +267,9 @@ async function seedAutoDispatchFixture() {
   });
 
   expect(pending?.proposedTask?.sourceUserRequest).toBe(originalRequest);
+  if (input.bindParticipant) {
+    expect(pending?.proposedTask?.subjectParticipantIds).toEqual([participantId]);
+  }
   expect(conversationControl.resolvePendingConfirmationAnswer("yes, procced", pending!)).toEqual({ kind: "confirm" });
 
   return {
@@ -258,6 +277,7 @@ async function seedAutoDispatchFixture() {
     organizationId,
     userId,
     conversationId,
+    participantId,
     originalRequest,
     pending: pending!,
   };
@@ -268,7 +288,7 @@ describe.runIf(runDbBackedTests)("DB-backed professional intent confirmation reg
     const {
       dbModule,
       drizzle,
-      autoDispatch,
+      messageIngress,
       organizationId,
       userId,
       conversationId,
@@ -284,15 +304,16 @@ describe.runIf(runDbBackedTests)("DB-backed professional intent confirmation reg
     } = dbModule;
     const { eq, and, desc } = drizzle;
 
-    const created = await autoDispatch.autoCreateAndDispatch({
+    const result = await messageIngress.handleIncomingMessage({
+      content: "yes, procced",
       organizationId,
-      requesterId: userId,
       conversationId,
-      idempotencyKey: `conversation_confirmation:${pending.id}`,
-      proposedTask: pending.proposedTask!,
+      userId,
+      idempotencyKey: `confirm:${pending.id}`,
     });
-    expect(created.dispatched).toBe(true);
-    expect(created.reusedExisting).not.toBe(true);
+    expect(result.type).toBe("normal");
+    const createdTaskId = ((result as any).result.structuredContent?.data?.taskId ?? null) as string | null;
+    expect(createdTaskId).toEqual(expect.any(String));
 
     const [taskRow] = await withSystemTenantContext(
       { tenantId: organizationId, serviceIdentity: "vitest", purpose: "intent_regression.read_task" },
@@ -301,7 +322,7 @@ describe.runIf(runDbBackedTests)("DB-backed professional intent confirmation reg
         .from(tasksTable)
         .where(and(
           eq(tasksTable.organizationId, organizationId),
-          eq(tasksTable.id, created.taskId),
+          eq(tasksTable.id, createdTaskId!),
         ))
         .limit(1),
     );
@@ -315,7 +336,7 @@ describe.runIf(runDbBackedTests)("DB-backed professional intent confirmation reg
         .from(taskExecutionPlansTable)
         .where(and(
           eq(taskExecutionPlansTable.organizationId, organizationId),
-          eq(taskExecutionPlansTable.taskId, created.taskId),
+          eq(taskExecutionPlansTable.taskId, createdTaskId!),
         ))
         .limit(1),
     );
@@ -339,6 +360,69 @@ describe.runIf(runDbBackedTests)("DB-backed professional intent confirmation reg
     expect(manifest?.canonicalIntent).toBe("care_plan.create");
     expect(manifest?.blueprintId).toEqual(expect.any(String));
     expect((manifest?.selectionMetadata as { blueprintFamily?: string } | null | undefined)?.blueprintFamily).toBe("care_plan");
+  }, 60_000);
+
+  it("persists the participant selected on the proposal through the confirmation turn", async () => {
+    const {
+      dbModule,
+      drizzle,
+      messageIngress,
+      organizationId,
+      userId,
+      conversationId,
+      participantId,
+      originalRequest,
+      pending,
+    } = await seedAutoDispatchFixture({ bindParticipant: true });
+
+    const {
+      tasksTable,
+      taskParticipantsTable,
+      withSystemTenantContext,
+    } = dbModule;
+    const { eq, and } = drizzle;
+
+    const result = await messageIngress.handleIncomingMessage({
+      content: "yes, procced",
+      organizationId,
+      conversationId,
+      userId,
+      idempotencyKey: `confirm:${pending.id}`,
+    });
+    expect(result.type).toBe("normal");
+    const createdTaskId = ((result as any).result.structuredContent?.data?.taskId ?? null) as string | null;
+    expect(createdTaskId).toEqual(expect.any(String));
+
+    const [taskRow] = await withSystemTenantContext(
+      { tenantId: organizationId, serviceIdentity: "vitest", purpose: "intent_regression.read_bound_task" },
+      async (client) => client
+        .select()
+        .from(tasksTable)
+        .where(and(
+          eq(tasksTable.organizationId, organizationId),
+          eq(tasksTable.id, createdTaskId!),
+        ))
+        .limit(1),
+    );
+    expect(((taskRow?.metadata as { taskCreation?: { sourceUserRequest?: string } } | null)?.taskCreation)?.sourceUserRequest)
+      .toBe(originalRequest);
+
+    const participantRows = await withSystemTenantContext(
+      { tenantId: organizationId, serviceIdentity: "vitest", purpose: "intent_regression.read_bound_task_participants" },
+      async (client) => client
+        .select()
+        .from(taskParticipantsTable)
+        .where(and(
+          eq(taskParticipantsTable.organizationId, organizationId),
+          eq(taskParticipantsTable.taskId, createdTaskId!),
+        )),
+    );
+    expect(participantRows).toEqual([
+      expect.objectContaining({
+        participantId,
+        role: "subject",
+      }),
+    ]);
   }, 60_000);
 
   it("deduplicates concurrent confirmations through the real auto-dispatch path", async () => {

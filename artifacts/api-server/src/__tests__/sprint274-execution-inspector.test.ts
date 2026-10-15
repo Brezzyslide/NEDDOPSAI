@@ -337,7 +337,7 @@ describe("getExecutionInspection", () => {
     const m = { ...baseManifest, organisationLibrarySources: [], taskUploads: [], blueprintId: BP_ID };
     wireDb([m], [], [baseCwRow], [baseBpRow]);
     const result = await getExecutionInspection(EXEC_ID, ORG_ID, ACTOR_ID, "org_user");
-    expect(result!.evidence.noEvidenceReason).toContain("Blueprint does not require library knowledge");
+    expect(result!.evidence.noEvidenceReason).toContain("No organisation library sources or task uploads were resolved");
   });
 
   it("no-evidence reason when ad-hoc (no blueprint)", async () => {
