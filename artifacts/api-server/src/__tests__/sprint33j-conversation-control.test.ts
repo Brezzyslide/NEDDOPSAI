@@ -415,13 +415,15 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(control).toContain("persistConversationConfirmation({");
   });
 
-  it("source guard: pending replies use model-led resolution before frozen pattern fallback", () => {
+  it("source guard: pending replies resolve deterministic confirmations before model-led replacement handling", () => {
     const ingress = readFileSync(resolve(__dirname, "../services/messageIngressService.ts"), "utf8");
 
     expect(ingress).toContain("classifyMessageLLM(input.content");
     expect(ingress).toContain("modelUnderstanding.pending_resolution");
     expect(ingress).toContain("modelUnderstanding.usedFallback");
-    expect(ingress).toContain("resolvePendingConfirmationAnswer(input.content, input.confirmation)");
+    expect(ingress.indexOf("resolvePendingConfirmationAnswer(input.content,")).toBeLessThan(
+      ingress.indexOf("classifyMessageLLM(input.content"),
+    );
     expect(ingress).toContain("I still have a pending");
   });
 

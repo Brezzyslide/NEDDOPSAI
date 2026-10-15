@@ -264,7 +264,8 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const src = source("services/taskService.ts");
 
     expect(src).toContain('queued: ["planning", "executing", "evidence_required", "cancelled"]');
-    expect(src).toContain('const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const');
+    expect(src).toContain('const RESUMABLE_TASK_STATES = ["evidence_required", "queued", "approved", "failed"] as const');
+    expect(src).toContain("inArray(tasksTable.currentState, [...RESUMABLE_TASK_STATES]");
   });
 
   it("evidence gaps pause execution in evidence_required rather than approval or executing", () => {
@@ -837,7 +838,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(coordinator).toContain('requiresEvidence:       false');
     expect(coordinator).toContain('phase?: "first_dispatch" | "resume"');
     expect(runnerBody).toContain('phase: "first_dispatch"');
-    expect(runnerBody).toContain("plan: plan?.planData as TaskPlanLaneSeed | undefined");
+    expect(runnerBody).toContain("plan: readTaskPlanData(plan)");
     expect(dispatchBody).toContain("taskTitle: input.taskTitle");
     expect(coordinator).toContain("before ${phase}");
     expect(coordinator).not.toContain("Execution lane context is missing; task execution must fail closed before resume.");
@@ -972,9 +973,9 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     expect(ingress).toContain("getFocusedSubjectParticipantIds");
     expect(ingress).toContain("getRetrievalSubjectParticipantIdsForTask");
-    expect(ingress).toContain("subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined");
+    expect(ingress).toContain("preferredSubjectParticipantIds(proposedTask, inheritedSubjectParticipantIds)");
     expect(autoDispatch).toContain("subjectParticipantIds?: string[]");
-    expect(autoDispatch).toContain("subjectParticipantIds: input.subjectParticipantIds");
+    expect(autoDispatch).toContain("subjectParticipantIds: input.subjectParticipantIds ?? proposedTask.subjectParticipantIds");
   });
 
   it("participant care plans do not block on organisational memory once evidence threshold is met", () => {

@@ -437,6 +437,7 @@ describe("messageIngressService", () => {
             priority: "normal",
             requestedOutcome: "Review delivery gaps",
             knownConstraints: [],
+            subjectParticipantIds: ["participant-michael"],
           },
           candidateTasks: [],
           createdAt: new Date().toISOString(),
@@ -472,16 +473,14 @@ describe("messageIngressService", () => {
     });
 
     expect(result.type).toBe("normal");
-    expect(mockClassifyMessageLLM).toHaveBeenCalledWith("please procceed", expect.objectContaining({
-      organizationId: "org-1",
-      conversationId: "conv-1",
-    }), expect.any(Object));
+    expect(mockClassifyMessageLLM).not.toHaveBeenCalled();
     expect(mockProcessUserMessage).not.toHaveBeenCalled();
     expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: "org-1",
       conversationId: "conv-1",
       requesterId: "user-1",
       proposedTask: expect.objectContaining({ title: "Service Delivery Review for Michael" }),
+      subjectParticipantIds: ["participant-michael"],
     }));
     expect((result as any).result.agentMessage.content).toMatch(/Created/);
   });
@@ -538,10 +537,7 @@ describe("messageIngressService", () => {
     });
 
     expect(result.type).toBe("normal");
-    expect(mockClassifyMessageLLM).toHaveBeenCalledWith("Confirm, please proceed.", expect.objectContaining({
-      organizationId: "org-1",
-      conversationId: "conv-1",
-    }), expect.any(Object));
+    expect(mockClassifyMessageLLM).not.toHaveBeenCalled();
     expect(mockProcessUserMessage).not.toHaveBeenCalled();
     expect(mockAutoCreateAndDispatch).toHaveBeenCalledTimes(1);
     expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({

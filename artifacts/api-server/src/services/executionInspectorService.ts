@@ -676,7 +676,7 @@ async function _buildInspection(
   if (librarySources.length === 0 && taskUploads.length === 0) {
     noEvidenceReason =
       manifestRow.blueprintId
-        ? "Blueprint does not require library knowledge for this work type"
+        ? "No organisation library sources or task uploads were resolved into this work package manifest"
         : "No blueprint selected — ad-hoc execution without evidence requirements";
   } else if (chunkIds.length === 0 && (librarySources.length > 0 || taskUploads.length > 0)) {
     noEvidenceReason = "Evidence sources were listed in the manifest but no chunks passed the confidence threshold (≥ 0.05)";

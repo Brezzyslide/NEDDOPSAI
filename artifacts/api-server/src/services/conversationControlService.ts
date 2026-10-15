@@ -104,6 +104,7 @@ export interface PendingConversationConfirmation {
     requestedOutcome?: string;
     knownConstraints?: string[];
     sourceUserRequest?: string;
+    subjectParticipantIds?: string[];
   };
   replacementProposedTask?: PendingConversationConfirmation["proposedTask"];
   replacementPromptedAt?: string;
@@ -280,6 +281,7 @@ function extractTaskProposalFromStructuredContent(
     requestedOutcome: readString(proposal.requestedOutcome) ?? readString(data.requestedOutcome),
     knownConstraints: readStringArray(proposal.knownConstraints ?? data.knownConstraints),
     sourceUserRequest,
+    subjectParticipantIds: readStringArray(proposal.subjectParticipantIds ?? data.subjectParticipantIds),
   };
 }
 

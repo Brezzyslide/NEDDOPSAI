@@ -40,6 +40,7 @@ export interface ConversationUnderstanding {
     requestedOutcome: string;
     knownConstraints: string[];
     sourceUserRequest?: string;
+    subjectParticipantIds?: string[];
   };
   clarificationRequired: boolean;
   clarificationQuestions: string[];
@@ -686,6 +687,7 @@ export function buildTaskProposalCard(understanding: ConversationUnderstanding):
       requestedOutcome: understanding.proposedTask.requestedOutcome,
       knownConstraints: understanding.proposedTask.knownConstraints,
       sourceUserRequest: understanding.proposedTask.sourceUserRequest,
+      subjectParticipantIds: understanding.proposedTask.subjectParticipantIds,
       suggestedRoles: understanding.relatedWorkforceRoles,
       actions: ["create_task", "continue_discussing"],
     },

@@ -175,6 +175,7 @@ function extractProposedTaskFromStructuredContent(
     requestedOutcome: readString(data.requestedOutcome),
     knownConstraints: readStringArray(data.knownConstraints),
     sourceUserRequest: sourceRequest,
+    subjectParticipantIds: readStringArray(data.subjectParticipantIds),
   };
 }
 
@@ -182,17 +183,28 @@ function extractProposedTaskForConfirmation(
   result: Awaited<ReturnType<typeof processUserMessage>>,
   sourceUserRequest: string,
 ): PendingConversationConfirmation["proposedTask"] | undefined {
-  if (result.understanding.proposedTask) {
-    return {
-      ...result.understanding.proposedTask,
-      sourceUserRequest: result.understanding.proposedTask.sourceUserRequest ?? sourceUserRequest,
-    };
-  }
-  return extractProposedTaskFromStructuredContent(result.structuredContent, sourceUserRequest)
+  const structuredProposal = extractProposedTaskFromStructuredContent(result.structuredContent, sourceUserRequest)
     ?? extractProposedTaskFromStructuredContent(
       (result.agentMessage as ConversationMessage | undefined)?.structuredContent as StructuredContent | undefined,
       sourceUserRequest,
     );
+  if (result.understanding.proposedTask) {
+    return {
+      ...result.understanding.proposedTask,
+      sourceUserRequest: result.understanding.proposedTask.sourceUserRequest ?? sourceUserRequest,
+      subjectParticipantIds: structuredProposal?.subjectParticipantIds,
+    };
+  }
+  return structuredProposal;
+}
+
+function preferredSubjectParticipantIds(
+  proposedTask: PendingConversationConfirmation["proposedTask"] | undefined,
+  inheritedSubjectParticipantIds: string[],
+): string[] | undefined {
+  const proposedIds = readStringArray(proposedTask?.subjectParticipantIds);
+  if (proposedIds.length > 0) return proposedIds;
+  return inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined;
 }
 
 function isStartedStatusQuestion(text: string): boolean {
@@ -745,7 +757,10 @@ async function maybeHandlePendingConfirmation(input: {
         requesterId: input.userId,
         idempotencyKey: `conversation_confirmation:${input.confirmation.id}:replacement`,
         proposedTask: input.confirmation.replacementProposedTask,
-        subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined,
+        subjectParticipantIds: preferredSubjectParticipantIds(
+          input.confirmation.replacementProposedTask,
+          inheritedSubjectParticipantIds,
+        ),
       });
       await markConversationConfirmationResolved({
         organizationId: input.organizationId,
@@ -837,76 +852,80 @@ async function maybeHandlePendingConfirmation(input: {
     }));
   }
 
-  let modelUnderstanding: (ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string }) | undefined;
-  try {
-    modelUnderstanding = await classifyMessageLLM(input.content, {
-      organizationId: input.organizationId,
-      conversationId: input.conversationId,
-      currentTaskId: input.taskId,
-    }, {
-      userId: input.userId,
-      organizationId: input.organizationId,
-      role: "member",
-      permissions: [],
-    });
-  } catch {
-    modelUnderstanding = undefined;
-  }
+  let answer: ReturnType<typeof resolvePendingConfirmationAnswer> | null = resolvePendingConfirmationAnswer(
+    input.content,
+    input.confirmation,
+  );
+  if (answer.kind === "unrelated") {
+    let modelUnderstanding: (ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string }) | undefined;
+    try {
+      modelUnderstanding = await classifyMessageLLM(input.content, {
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        currentTaskId: input.taskId,
+      }, {
+        userId: input.userId,
+        organizationId: input.organizationId,
+        role: "member",
+        permissions: [],
+      });
+    } catch {
+      modelUnderstanding = undefined;
+    }
 
-  let answer: ReturnType<typeof resolvePendingConfirmationAnswer> | null = null;
-  if (modelUnderstanding && !modelUnderstanding.usedFallback) {
-    switch (modelUnderstanding.pending_resolution) {
-      case "CONFIRM":
-        answer = { kind: "confirm" };
-        break;
-      case "DECLINE":
-        answer = { kind: "decline" };
-        break;
-      case "AMBIGUOUS":
-        return handle(addControlMessages({
-          organizationId: input.organizationId,
-          conversationId: input.conversationId,
-          taskId: input.confirmation.taskId ?? input.taskId,
-          userId: input.userId,
-          content: input.content,
-          response: `Do you mean the pending ${input.confirmation.action.toLowerCase().replace(/_/g, " ")} for "${pendingTarget}", or something else?`,
-          idempotencyKey: input.idempotencyKey,
-          mode: "task_followup",
-          confidence: 0.6,
-          messageType: "question",
-        }));
-      case "UNRELATED":
-        if (input.confirmation.action === "NEW_TASK") {
-          const newProposalTitle = modelUnderstanding.proposedTask?.title
-            ?? modelUnderstanding.proposedTask?.summary
-            ?? "the new request";
-          if (modelUnderstanding.proposedTask) {
-            await setPendingConversationReplacement({
-              organizationId: input.organizationId,
-              conversationId: input.conversationId,
-              confirmation: input.confirmation,
-              replacementProposedTask: modelUnderstanding.proposedTask,
-            }).catch(() => {});
-          }
+    if (modelUnderstanding && !modelUnderstanding.usedFallback) {
+      switch (modelUnderstanding.pending_resolution) {
+        case "CONFIRM":
+          answer = { kind: "confirm" };
+          break;
+        case "DECLINE":
+          answer = { kind: "decline" };
+          break;
+        case "AMBIGUOUS":
           return handle(addControlMessages({
             organizationId: input.organizationId,
             conversationId: input.conversationId,
             taskId: input.confirmation.taskId ?? input.taskId,
             userId: input.userId,
             content: input.content,
-            response: `I still have a pending proposal for "${pendingTarget}". Do you want me to keep that pending proposal, replace it with "${newProposalTitle}", or cancel the pending proposal?`,
+            response: `Do you mean the pending ${input.confirmation.action.toLowerCase().replace(/_/g, " ")} for "${pendingTarget}", or something else?`,
             idempotencyKey: input.idempotencyKey,
             mode: "task_followup",
             confidence: 0.6,
             messageType: "question",
           }));
-        }
-        return { result: null, preclassifiedUnderstanding: modelUnderstanding };
-      default:
-        return { result: null, preclassifiedUnderstanding: modelUnderstanding };
+        case "UNRELATED":
+          if (input.confirmation.action === "NEW_TASK") {
+            const newProposalTitle = modelUnderstanding.proposedTask?.title
+              ?? modelUnderstanding.proposedTask?.summary
+              ?? "the new request";
+            if (modelUnderstanding.proposedTask) {
+              await setPendingConversationReplacement({
+                organizationId: input.organizationId,
+                conversationId: input.conversationId,
+                confirmation: input.confirmation,
+                replacementProposedTask: modelUnderstanding.proposedTask,
+              }).catch(() => {});
+            }
+            return handle(addControlMessages({
+              organizationId: input.organizationId,
+              conversationId: input.conversationId,
+              taskId: input.confirmation.taskId ?? input.taskId,
+              userId: input.userId,
+              content: input.content,
+              response: `I still have a pending proposal for "${pendingTarget}". Do you want me to keep that pending proposal, replace it with "${newProposalTitle}", or cancel the pending proposal?`,
+              idempotencyKey: input.idempotencyKey,
+              mode: "task_followup",
+              confidence: 0.6,
+              messageType: "question",
+            }));
+          }
+          return { result: null, preclassifiedUnderstanding: modelUnderstanding };
+        default:
+          return { result: null, preclassifiedUnderstanding: modelUnderstanding };
+      }
     }
-  } else {
-    answer = resolvePendingConfirmationAnswer(input.content, input.confirmation);
+
     if (answer.kind === "unrelated") {
       return handle(addControlMessages({
         organizationId: input.organizationId,
@@ -1065,7 +1084,7 @@ async function maybeHandlePendingConfirmation(input: {
       requesterId: input.userId,
       idempotencyKey: `conversation_confirmation:${input.confirmation.id}`,
       proposedTask,
-      subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined,
+      subjectParticipantIds: preferredSubjectParticipantIds(proposedTask, inheritedSubjectParticipantIds),
     });
     await markConversationConfirmationResolved({
       organizationId: input.organizationId,

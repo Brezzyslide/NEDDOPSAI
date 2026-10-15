@@ -44,6 +44,7 @@ export interface AutoDispatchInput {
     requestedOutcome?:   string;
     knownConstraints?:   string[];
     sourceUserRequest?:  string;
+    subjectParticipantIds?: string[];
   };
   /**
    * Sprint 29M: classification flags from executionClassifierService.
@@ -106,7 +107,7 @@ export async function autoCreateAndDispatch(
     conversationId,
     idempotencyKey:    input.idempotencyKey ?? `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`,
     sourceUserRequest: proposedTask.sourceUserRequest,
-    subjectParticipantIds: input.subjectParticipantIds,
+    subjectParticipantIds: input.subjectParticipantIds ?? proposedTask.subjectParticipantIds,
   });
 
   const { task, plan } = result;
