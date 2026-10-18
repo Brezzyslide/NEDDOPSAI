@@ -998,8 +998,8 @@ function validateCarePlanMechanicalRules(
       : sectionByHeading(fallbackPattern);
   };
 
-  const planDate = findNamedDate(content, /\b(?:plan date|date)\b/i);
-  const reviewDate = findNamedDate(content, /\b(?:date for review|review date)\b/i);
+  const planDate = findCarePlanDeclaredDate(deliverableSections, content, "plan");
+  const reviewDate = findCarePlanDeclaredDate(deliverableSections, content, "review");
   if (planDate && reviewDate && reviewDate.getTime() <= planDate.getTime()) {
     failures.push(mechanicalFailure("care_plan_review_date_later_than_plan_date", "Review date must be later than the plan date."));
   }
@@ -1139,9 +1139,16 @@ function extractLabelledRuntimeValue(content: string, label: string): string | n
   ];
   for (const pattern of patterns) {
     const match = content.match(pattern);
-    if (match?.[1]?.trim()) return match[1].trim();
+    if (match?.[1]?.trim()) return trimRuntimeLabelValueAtFieldBoundary(match[1]);
   }
   return null;
+}
+
+function trimRuntimeLabelValueAtFieldBoundary(value: string): string {
+  return value
+    .replace(/\s*\|\s*$/, "")
+    .split(/\s+(?=\*\*[^*\n|]{2,80}:\*\*)/)[0]!
+    .trim();
 }
 
 function normaliseCarePlanIdentityClaim(value: string): string {
@@ -1358,6 +1365,46 @@ function assembleCarePlanMechanicalContent(
   return deliverableSections
     .map((section) => `## ${section.heading}\n\n${section.content}`)
     .join("\n\n");
+}
+
+function findCarePlanDeclaredDate(
+  deliverableSections: PerRequirementDeliverableSection[] | undefined,
+  contentMarkdown: string,
+  kind: "plan" | "review",
+): Date | null {
+  const sections = extractMarkdownSections(contentMarkdown);
+  const supportPlan = deliverableSections?.find((section) => section.requirementId === "care-plan-support-plan-meeting")?.content ??
+    sections.find((section) => /\bsupport plan meeting\b/i.test(section.heading))?.body ??
+    "";
+  const documentControl = deliverableSections?.find((section) => section.requirementId === "care-plan-document-control")?.content ??
+    sections.find((section) => /\bdocument control\b/i.test(section.heading))?.body ??
+    "";
+
+  const labels = kind === "plan"
+    ? ["Plan Date"]
+    : ["Date for Review", "Review Date", "Next review date"];
+  const values = kind === "plan"
+    ? labels.map((label) => extractLabelledRuntimeValue(supportPlan, label))
+    : [
+      ...labels.map((label) => extractLabelledRuntimeValue(supportPlan, label)),
+      ...labels.map((label) => extractLabelledRuntimeValue(documentControl, label)),
+    ];
+
+  for (const value of values) {
+    const parsed = parseRuntimeDateValue(value);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function parseRuntimeDateValue(value: string | null | undefined): Date | null {
+  const match = value?.match(/\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})\b/);
+  if (!match) return null;
+  const raw = match[1] ?? "";
+  const parsed = raw.includes("/")
+    ? parseSlashDate(raw)
+    : new Date(`${raw}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function findNamedDate(content: string, labelPattern: RegExp): Date | null {

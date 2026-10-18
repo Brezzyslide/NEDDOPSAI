@@ -9,6 +9,10 @@ import {
   validateBlueprintRuntimeCompletion,
 } from "../services/blueprintRuntimeValidationService";
 import {
+  assembleDeliverableMarkdownFromSections,
+  verifySpanDetailed,
+} from "../services/claimValidationService";
+import {
   compileProfessionalExecutionContext,
 } from "../services/professionalExecutionContextService";
 import {
@@ -404,6 +408,115 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(coverage.missingCount).toBeGreaterThan(0);
   });
 
+  it("ignores blocked-draft presentation sections and compares ADL using the rendered structured rows", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const request = "Create a care plan for participant Alex.";
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: request,
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const structuredSections = profile.requirements.slice(0, 14).map((requirement, index) => ({
+      requirementId: requirement.id,
+      heading: requirement.id === "care-plan-undertaking-adl" ? "Undertaking ADL" : `Section ${index + 1}`,
+      content: requirement.id === "care-plan-undertaking-adl"
+        ? "Model supplied ADL prose that is superseded by structuredRows."
+        : [
+          `Complete structured content for ${requirement.description}.`,
+          ...(requirement.templateCriteria.length > 0 ? requirement.templateCriteria : requirement.adequacyCriteria),
+        ].join(" "),
+      structuredRows: requirement.id === "care-plan-undertaking-adl"
+        ? [{
+          activity: "Eating and drinking",
+          supportLevel: "Independent",
+          workerDescription: "Worker monitors only.",
+          sourceValue: "Independent",
+          chunkId: "chunk-adl-1",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        }]
+        : undefined,
+    }));
+    const deliverableMarkdown = assembleDeliverableMarkdownFromSections(structuredSections, profile.requirements.map((requirement) => requirement.id));
+    const blockedDraftMarkdown = [
+      deliverableMarkdown,
+      "## Unapproved Draft Blocked",
+      "This presentation banner is not a deliverable section.",
+      "## Gate Failures",
+      "- mandatory_deliverable_coverage",
+      "## Suppression Records",
+      "- Suppressed provider claim.",
+    ].join("\n\n");
+
+    const coverage = evaluateDeliverableRequirementCoverage(blockedDraftMarkdown, profile, {
+      deliverableSections: structuredSections,
+    });
+
+    expect(coverage.missing).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requirementId: "__deliverable_section_integrity__",
+      }),
+    ]));
+  });
+
+  it("treats adjacent care-plan date labels as separate declared fields", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const request = "Create a care plan for participant Alex.";
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: request,
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const supportPlanSection = {
+      requirementId: "care-plan-support-plan-meeting",
+      heading: "Support Plan Meeting",
+      content: "**Plan Date:** 2026-10-15 **Date for Review:** 2027-10-15",
+    };
+    const content = assembleDeliverableMarkdownFromSections([supportPlanSection]);
+
+    const gate = validateBlueprintRuntimeCompletion({
+      contract: contract(blueprint),
+      contentMarkdown: content,
+      evidencePack: emptyEvidencePack(),
+      artifactId: "artifact",
+      deferApprovalGate: true,
+      professionalContext,
+      deliverableSections: [supportPlanSection],
+    });
+
+    expect(gate.failures).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        gate: "mechanical_gate",
+        message: expect.stringContaining("Review date must be later than the plan date"),
+      }),
+    ]));
+  });
+
+  it("verifies CBSP goal passages when the model adds a trailing editorial ellipsis", () => {
+    const cbspChunk = [
+      "Outcome Measures",
+      "(linked to each goal)",
+      "- Support staff and Behaviour",
+      "Support Practitioner to",
+      "monitor and review goals",
+      "- GAS reviewed on a regular",
+      "basis as determined by Team",
+    ].join("\n");
+
+    const result = verifySpanDetailed(
+      "Support staff and Behaviour Support Practitioner to monitor and review goals...",
+      cbspChunk,
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.byteExact).toBe(false);
+    expect(result.normalisedSpan).toBe("support staff and behaviour support practitioner to monitor and review goals");
+  });
+
   it("keeps participant-specific placeholder enforcement strict even for declared care-plan fields", () => {
     const blueprint = getRegistryEntry("care_plan");
     if (!blueprint) throw new Error("missing care_plan blueprint");
@@ -518,8 +631,8 @@ describe("Sprint 38 Batch One gate fixes", () => {
 
   it("keeps sub-threshold self-review output in draft instead of moving it to awaiting approval", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
-    expect(uee).toContain("const qualityGatePassed = reviewResult.passed");
-    expect(uee).toContain("const requiresApproval = qualityGatePassed &&");
+    expect(uee).toContain("const qualityGatePassed = reviewResult.passed ?? reviewPassed(reviewResult)");
+    expect(uee).toContain("const requiresApproval = !approvalBlockedByCompletionGates && qualityGatePassed &&");
     expect(uee).toContain('failedStage: "quality_review"');
     expect(uee).toContain("Draft is saved but cannot move to awaiting approval");
   });
@@ -540,8 +653,9 @@ describe("Sprint 38 Batch One gate fixes", () => {
     );
 
     expect(gateFailurePath).toContain("await updateManifestObservability");
-    expect(gateFailurePath).toContain("gateFailures: runtimeGate.failures");
-    expect(gateFailurePath).toContain("buildRuntimeGateFailureItems(runtimeGate.failures)");
+    expect(gateFailurePath).toContain("const blockingFailures = completionGateDisposition.hardFailures.length > 0");
+    expect(gateFailurePath).toContain("gateFailures: blockingFailures");
+    expect(gateFailurePath).toContain("buildRuntimeGateFailureItems(blockingFailures)");
     expect(snapshotPersistence).toContain("throw err");
     expect(sessionPersistence).toContain("throw err");
     expect(gateFailurePath).not.toContain("}).catch(() => {})");
