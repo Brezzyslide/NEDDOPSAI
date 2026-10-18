@@ -99,6 +99,7 @@ export type RequirementSubstantiveValidationMode =
   | "VERIFIED_EXACT_VALUE"
   | "VERIFIED_MAPPING"
   | "VERIFIED_SPAN"
+  | "CITED_INTERPRETATION"
   | "CITED_INTERPRETATION_UNVERIFIED"
   | "UNSUPPORTED_CITATION"
   | "MISSING_CITATION"
@@ -110,6 +111,7 @@ export type CarePlanCitationValidationMode =
   | "VERIFIED_EXACT_VALUE"
   | "VERIFIED_MAPPING"
   | "VERIFIED_SPAN"
+  | "CITED_INTERPRETATION"
   | "CITED_INTERPRETATION_UNVERIFIED"
   | "UNSUPPORTED_CITATION"
   | "MISSING_CITATION";
@@ -257,7 +259,13 @@ export interface PerRequirementEvidenceSource {
   passage: string;
   location: string;
   evidenceClass?: string;
+  citationMode?: PerRequirementEvidenceCitationMode;
 }
+
+export type PerRequirementEvidenceCitationMode =
+  | "VERBATIM_SPAN"
+  | "SUPPORTING_INTERPRETATION"
+  | "BLUEPRINT_AUTHORED";
 
 export interface PerRequirementEvidenceGap {
   category?: string;
@@ -511,10 +519,10 @@ function buildDeliverableSectionIntegrityFailures(
   }
 
   const normalisedMarkdown = normaliseContent(markdownSections
-    .map((section) => `${section.title}\n${section.content}`)
+    .map((section) => `${section.title}\n${normaliseSectionIntegrityContent(section.content)}`)
     .join("\n\n"));
   const missingStructuredSections = Array.from(structuredSections.values())
-    .filter((section) => !normalisedMarkdown.includes(normaliseContent(renderStructuredSectionForIntegrity(section))));
+    .filter((section) => !normalisedMarkdown.includes(normaliseContent(normaliseSectionIntegrityContent(renderStructuredSectionForIntegrity(section)))));
   if (missingStructuredSections.length > 0) {
     failures.push(deliverableSectionIntegrityFailure(
       `Structured deliverable sections are not represented in the persisted markdown artifact for requirementId(s): ${missingStructuredSections.map((section) => section.requirementId).join(", ")}.`,
@@ -543,6 +551,67 @@ function isCarePlanPresentationSection(section: MarkdownSection): boolean {
 function renderStructuredSectionForIntegrity(section: PerRequirementDeliverableSection): string {
   const rendered = assembleDeliverableMarkdownFromSections([section]);
   return rendered.replace(/^##\s+.+?\n+/, "").trim() || section.content.trim();
+}
+
+function normaliseSectionIntegrityContent(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const next = lines[index + 1] ?? "";
+    if (isMarkdownTableRow(line) && isMarkdownTableDivider(next)) {
+      const table: string[] = [line, next];
+      index += 2;
+      while (index < lines.length && isMarkdownTableRow(lines[index] ?? "")) {
+        table.push(lines[index] ?? "");
+        index += 1;
+      }
+      index -= 1;
+      out.push(...stripProvenanceOnlyMarkdownTableColumns(table));
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+function stripProvenanceOnlyMarkdownTableColumns(table: string[]): string[] {
+  const headers = splitMarkdownTableRow(table[0] ?? "");
+  if (headers.length === 0) return table;
+  const keepIndexes = headers
+    .map((header, index) => ({ header: normaliseContent(header), index }))
+    .filter(({ header }) => ![
+      "source value",
+      "chunk id",
+      "mapping mode",
+      "guidance provenance",
+      "guidance basis",
+    ].includes(header))
+    .map(({ index }) => index);
+  if (keepIndexes.length === headers.length || keepIndexes.length === 0) return table;
+  return table.map((row, rowIndex) => {
+    const cells = splitMarkdownTableRow(row);
+    const kept = keepIndexes.map((columnIndex) => cells[columnIndex] ?? "");
+    if (rowIndex === 1) return `| ${kept.map(() => "---").join(" | ")} |`;
+    return `| ${kept.join(" | ")} |`;
+  });
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  return /^\s*\|.*\|\s*$/.test(line);
+}
+
+function isMarkdownTableDivider(line: string): boolean {
+  return /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(line);
+}
+
+function splitMarkdownTableRow(row: string): string[] {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, "|").trim());
 }
 
 function deliverableSectionIntegrityFailure(reason: string): DeliverableRequirementCoverageFailure {
@@ -1662,6 +1731,10 @@ function evaluateCarePlanCitationFindings(
   const verifiedSources: Array<{ source: PerRequirementEvidenceSource; chunk: EvidenceChunk; citedText: string }> = [];
 
   for (const source of section.evidenceSources ?? []) {
+    const citationMode = classifyEvidenceSourceCitationMode(source, requirement);
+    if (citationMode === "BLUEPRINT_AUTHORED") {
+      continue;
+    }
     const chunk = chunks.get(source.chunkId);
     if (!chunk) {
       findings.push({
@@ -1675,6 +1748,26 @@ function evaluateCarePlanCitationFindings(
         citedText: source.passage,
         reason: `Cited chunk is not present in the runtime evidence pack.`,
       });
+      continue;
+    }
+    if (citationMode === "SUPPORTING_INTERPRETATION") {
+      const support = verifyInterpretationSupport(source.passage, chunk.text);
+      findings.push({
+        requirementId: requirement.id,
+        claim: `${section.heading}: cited supporting evidence`,
+        mode: support.supported ? "CITED_INTERPRETATION" : "UNSUPPORTED_CITATION",
+        accountable: false,
+        passed: support.supported,
+        chunkId: source.chunkId,
+        documentTitle: source.documentTitle,
+        citedText: source.passage,
+        reason: support.supported
+          ? `Cited passage is a supporting interpretation supported by the cited chunk (${support.reason}).`
+          : `Cited interpretation could not be supported by the cited chunk (${support.reason}).`,
+      });
+      if (support.supported) {
+        verifiedSources.push({ source, chunk, citedText: source.passage });
+      }
       continue;
     }
     const span = verifySpanDetailed(source.passage, chunk.text);
@@ -1820,6 +1913,101 @@ function evaluateCarePlanCitationFindings(
   }
 
   return findings;
+}
+
+function classifyEvidenceSourceCitationMode(
+  source: PerRequirementEvidenceSource,
+  requirement: DeliverableRequirement,
+): PerRequirementEvidenceCitationMode {
+  if (source.citationMode) return source.citationMode;
+  if (isAuthoredTemplateContentPart(source.passage, requirement.fixedContent)) return "BLUEPRINT_AUTHORED";
+  if (isAuthoredCompletionPromptPart(source.passage, requirement.completionPrompt)) return "BLUEPRINT_AUTHORED";
+  const evidenceClass = source.evidenceClass?.toLowerCase() ?? "";
+  if (/\b(?:blueprint|fixed_content|fixed-content|completion_prompt|completion-prompt|authored)\b/.test(evidenceClass)) {
+    return "BLUEPRINT_AUTHORED";
+  }
+  return "VERBATIM_SPAN";
+}
+
+function verifyInterpretationSupport(
+  statement: string,
+  chunkText: string,
+): { supported: boolean; reason: string } {
+  const exact = verifySpanDetailed(statement, chunkText);
+  if (exact.verified) {
+    return {
+      supported: true,
+      reason: exact.byteExact ? "exact passage appears in chunk" : "passage appears after normalisation",
+    };
+  }
+
+  const missingExplicitValues = extractExplicitSupportValues(statement)
+    .filter((value) => !normaliseEvidenceTextForComparison(chunkText).includes(normaliseEvidenceTextForComparison(value)));
+  if (missingExplicitValues.length > 0) {
+    return {
+      supported: false,
+      reason: `explicit value(s) absent from chunk: ${missingExplicitValues.slice(0, 5).join(", ")}`,
+    };
+  }
+
+  const statementTokens = significantSupportTokens(statement);
+  const chunkTokens = new Set(significantSupportTokens(chunkText));
+  const matched = statementTokens.filter((token) => chunkTokens.has(token));
+  if (statementTokens.length === 0) {
+    return { supported: false, reason: "no significant tokens to compare" };
+  }
+  const ratio = matched.length / statementTokens.length;
+  const supported = matched.length >= Math.min(4, statementTokens.length) && ratio >= 0.45;
+  return {
+    supported,
+    reason: `${matched.length}/${statementTokens.length} significant tokens matched`,
+  };
+}
+
+function extractExplicitSupportValues(value: string): string[] {
+  return Array.from(new Set([
+    ...(value.match(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g) ?? []),
+    ...(value.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []),
+    ...(value.match(/\b\d+(?:\.\d+)?\s*(?:mg|ml|hours?|days?|weeks?|months?|years?|workers?)\b/gi) ?? []),
+    ...(value.match(/\bNDIS\s*(?:number)?\s*\d+\b/gi) ?? []),
+  ].map((item) => item.trim()).filter(Boolean)));
+}
+
+function significantSupportTokens(value: string): string[] {
+  const stopwords = new Set([
+    "about",
+    "after",
+    "again",
+    "against",
+    "also",
+    "below",
+    "because",
+    "been",
+    "before",
+    "being",
+    "between",
+    "cannot",
+    "does",
+    "from",
+    "have",
+    "into",
+    "must",
+    "only",
+    "order",
+    "that",
+    "their",
+    "them",
+    "they",
+    "this",
+    "when",
+    "where",
+    "with",
+    "worker",
+    "workers",
+  ]);
+  return Array.from(new Set(normaliseEvidenceTextForComparison(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 4 && !stopwords.has(token))));
 }
 
 function findRuntimeExactPassageEvidence(

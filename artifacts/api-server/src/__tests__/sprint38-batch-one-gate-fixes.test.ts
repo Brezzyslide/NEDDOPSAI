@@ -87,6 +87,30 @@ function emptyEvidencePack(): EvidencePack {
   };
 }
 
+function evidencePackWithChunk(chunk: Partial<EvidencePack["chunks"][number]> & { chunkId: string; text: string }): EvidencePack {
+  return {
+    ...emptyEvidencePack(),
+    chunks: [{
+      sourceId: "source-1",
+      sourceVersionId: "version-1",
+      sourceTitle: "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+      versionLabel: null,
+      sourceType: "participant_document",
+      documentCategory: "behaviour_support_plan",
+      evidenceClass: "PROFESSIONAL_SOURCE",
+      authorityLevel: "primary",
+      sectionTitle: null,
+      pageNumber: 1,
+      confidence: 0.9,
+      citation: "CBSP p. 1",
+      selectionReason: "test",
+      ...chunk,
+    }],
+    sourceIds: ["source-1"],
+    totalChunks: 1,
+  };
+}
+
 function contract(blueprint: WorkBlueprint): BlueprintExecutionContract {
   return {
     blueprint,
@@ -459,6 +483,273 @@ describe("Sprint 38 Batch One gate fixes", () => {
         requirementId: "__deliverable_section_integrity__",
       }),
     ]));
+  });
+
+  it("does not span-verify authored fixed content as if it were evidence", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Alex.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const fixedContent = "The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift.";
+    const coverage = evaluateDeliverableRequirementCoverage(`## Behavioural Management\n\n${fixedContent}\n\nProactive, reactive and protective strategies from the behaviour support plan tell workers what to do.`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-behavioural-management",
+        heading: "Behavioural Management",
+        content: `${fixedContent}\n\nProactive, reactive and protective strategies from the behaviour support plan tell workers what to do.`,
+        evidenceSources: [{
+          chunkId: "chunk-fixed-content",
+          documentTitle: "CBSP",
+          passage: fixedContent,
+          location: "CBSP p. 1",
+          evidenceClass: "blueprint_fixed_content",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-fixed-content",
+        text: "The retrieved BSP chunk contains participant-specific strategies but not the authored provider preamble.",
+      }),
+    });
+    const behavioural = coverage.requirementResults.find((item) => item.requirementId === "care-plan-behavioural-management");
+
+    expect(behavioural?.citationFindings ?? []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "UNSUPPORTED_CITATION",
+        citedText: fixedContent,
+      }),
+    ]));
+  });
+
+  it("classifies source-supported paraphrase as cited interpretation instead of unsupported span", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Alex.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const paraphrase = "Michael is a sociable, resourceful and resilient person and possesses a warm and engaging personality when he is calm and regulated.";
+    const coverage = evaluateDeliverableRequirementCoverage(`## About Me\n\n${paraphrase}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-about-me",
+        heading: "About Me",
+        content: paraphrase,
+        evidenceSources: [{
+          chunkId: "chunk-about-me",
+          documentTitle: "CBSP",
+          passage: paraphrase,
+          location: "CBSP p. 3",
+          evidenceClass: "participant_document",
+          citationMode: "SUPPORTING_INTERPRETATION",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-about-me",
+        text: "Michael is sociable and warm when calm. He shows resilience, can be resourceful, and presents with an engaging personality when he is regulated.",
+      }),
+    });
+    const aboutMe = coverage.requirementResults.find((item) => item.requirementId === "care-plan-about-me");
+
+    expect(aboutMe?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "CITED_INTERPRETATION",
+        passed: true,
+        citedText: paraphrase,
+      }),
+    ]));
+    expect(aboutMe?.citationFindings ?? []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "UNSUPPORTED_CITATION",
+        citedText: paraphrase,
+      }),
+    ]));
+  });
+
+  it("fails a cited interpretation when the cited chunk does not support the assertion", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Alex.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const unsupported = "Michael uses a wheelchair and requires two workers for all transfers.";
+    const coverage = evaluateDeliverableRequirementCoverage(`## Mobility and Mobility Strategy\n\n${unsupported}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-mobility-strategy",
+        heading: "Mobility and Mobility Strategy",
+        content: unsupported,
+        evidenceSources: [{
+          chunkId: "chunk-mobility",
+          documentTitle: "Intake checklist",
+          passage: unsupported,
+          location: "Intake p. 2",
+          evidenceClass: "participant_document",
+          citationMode: "SUPPORTING_INTERPRETATION",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-mobility",
+        text: "The intake checklist records walking without support and transfers to and from bed without support.",
+      }),
+    });
+    const mobility = coverage.requirementResults.find((item) => item.requirementId === "care-plan-mobility-strategy");
+
+    expect(mobility?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "UNSUPPORTED_CITATION",
+        passed: false,
+        citedText: unsupported,
+      }),
+    ]));
+  });
+
+  it("fails an inverted mobility interpretation against a without-support chunk", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Alex.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const inverted = "Michael requires staff assistance for transfers.";
+    const coverage = evaluateDeliverableRequirementCoverage(`## Mobility and Mobility Strategy\n\n${inverted}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-mobility-strategy",
+        heading: "Mobility and Mobility Strategy",
+        content: inverted,
+        evidenceSources: [{
+          chunkId: "chunk-without-support",
+          documentTitle: "Intake checklist",
+          passage: inverted,
+          location: "Intake p. 2",
+          evidenceClass: "participant_document",
+          citationMode: "SUPPORTING_INTERPRETATION",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-without-support",
+        text: "The intake checklist records walking without support and Transfer to/from bed: Without support.",
+      }),
+    });
+    const mobility = coverage.requirementResults.find((item) => item.requirementId === "care-plan-mobility-strategy");
+
+    expect(mobility?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "UNSUPPORTED_CITATION",
+        passed: false,
+        citedText: inverted,
+      }),
+    ]));
+  });
+
+  it("renders ADL and Mobility without provenance columns while preserving structured gate input", () => {
+    const mobilityRows = [{
+      activity: "Transfer method",
+      supportLevel: "Transfers to and from bed without support.",
+      workerDescription: "Allow independent bed transfers and escalate any change in falls risk.",
+      sourceValue: "Transfer to/from bed: Without support",
+      chunkId: "chunk-transfer",
+      mappingMode: "VERIFIED_MAPPING" as const,
+      derivedGuidance: {
+        text: "Allow independent bed transfers and escalate any change in falls risk.",
+        provenance: "SYSTEM_DERIVED" as const,
+        basisField: "Transfer method",
+      },
+    }];
+    const adlRows = [{
+      activity: "Transfers and positioning",
+      supportLevel: "Independent",
+      workerDescription: "Michael completes transfers without assistance.",
+      sourceValue: "Transfer to/from bed: Without support",
+      chunkId: "chunk-transfer",
+      mappingMode: "VERIFIED_MAPPING" as const,
+    }];
+    const markdown = assembleDeliverableMarkdownFromSections([
+      {
+        requirementId: "care-plan-undertaking-adl",
+        heading: "Undertaking ADL",
+        content: "Structured ADL rows supplied.",
+        structuredRows: adlRows,
+      },
+      {
+        requirementId: "care-plan-mobility-strategy",
+        heading: "Mobility and Mobility Strategy",
+        content: "Structured mobility rows supplied.",
+        structuredRows: mobilityRows,
+      },
+    ]);
+
+    expect(markdown).toContain("| Activity | Support level | What the worker does |");
+    expect(markdown).toContain("| Field | Value | Worker guidance |");
+    expect(markdown).not.toContain("Chunk ID");
+    expect(markdown).not.toContain("Mapping mode");
+    expect(markdown).not.toContain("Guidance provenance");
+    expect(markdown).not.toContain("chunk-transfer");
+    expect(markdown).not.toContain("VERIFIED_MAPPING");
+  });
+
+  it("keeps gate results stable when provenance columns are not rendered", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Alex.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const mobilityRows = [{
+      activity: "Transfer method",
+      supportLevel: "Transfers to and from bed without support.",
+      workerDescription: "Allow independent bed transfers and escalate any change in falls risk.",
+      sourceValue: "Transfer to/from bed: Without support",
+      chunkId: "chunk-transfer",
+      mappingMode: "VERIFIED_MAPPING" as const,
+    }];
+    const structuredSection = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: "| Field | Value | Worker guidance |\n| --- | --- | --- |\n| Transfer method | Transfers to and from bed without support. | Allow independent bed transfers and escalate any change in falls risk. |",
+      structuredRows: mobilityRows,
+    };
+    const publicMarkdown = assembleDeliverableMarkdownFromSections([structuredSection]);
+    const provenanceMarkdown = [
+      "## Mobility and Mobility Strategy",
+      "",
+      "| Field | Value | Source value | Chunk ID | Mapping mode | Worker guidance |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| Transfer method | Transfers to and from bed without support. | Transfer to/from bed: Without support | chunk-transfer | VERIFIED_MAPPING | Allow independent bed transfers and escalate any change in falls risk. |",
+    ].join("\n");
+    const publicCoverage = evaluateDeliverableRequirementCoverage(publicMarkdown, profile, {
+      deliverableSections: [structuredSection],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-transfer",
+        text: "Transfer to/from bed: Without support. Walk without aid: Without support.",
+      }),
+    });
+    const provenanceCoverage = evaluateDeliverableRequirementCoverage(provenanceMarkdown, profile, {
+      deliverableSections: [structuredSection],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-transfer",
+        text: "Transfer to/from bed: Without support. Walk without aid: Without support.",
+      }),
+    });
+
+    expect(publicCoverage.requirementResults.find((item) => item.requirementId === "care-plan-mobility-strategy")?.finalResult)
+      .toBe(provenanceCoverage.requirementResults.find((item) => item.requirementId === "care-plan-mobility-strategy")?.finalResult);
+    expect(publicCoverage.missing.map((item) => item.requirementId))
+      .toEqual(provenanceCoverage.missing.map((item) => item.requirementId));
   });
 
   it("treats adjacent care-plan date labels as separate declared fields", () => {
