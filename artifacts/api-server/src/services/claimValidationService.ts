@@ -178,6 +178,7 @@ const SPAN_NORMALISATION_STEPS = [
   "soft hyphens removed",
   "hyphenated line breaks joined",
   "line breaks/whitespace collapsed",
+  "terminal editorial ellipses removed",
   "trimmed",
 ];
 
@@ -188,6 +189,7 @@ function normaliseEvidenceSpanText(value: string): string {
     .replace(/([A-Za-z])-\s*[\r\n]+\s*([A-Za-z])/g, "$1$2")
     .replace(/[\r\n]+/g, " ")
     .replace(/\s+/g, " ")
+    .replace(/\s*(?:…|\.{3,})\s*$/g, "")
     .trim()
     .toLowerCase();
 }

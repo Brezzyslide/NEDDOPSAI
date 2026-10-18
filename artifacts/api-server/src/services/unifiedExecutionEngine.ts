@@ -7368,9 +7368,16 @@ function extractLabelledFields(content: string, labels: string[]): Record<string
   for (const label of labels) {
     const pattern = new RegExp(`^[-*|\\s]*${escapeRegExp(label)}\\s*[:|]\\s*(.+?)\\s*\\|?$`, "i");
     const match = lines.map((line) => line.match(pattern)).find(Boolean);
-    if (match?.[1]) fields[label] = match[1].trim();
+    if (match?.[1]) fields[label] = trimLabelledFieldValueAtBoundary(match[1]);
   }
   return fields;
+}
+
+function trimLabelledFieldValueAtBoundary(value: string): string {
+  return value
+    .replace(/\s*\|\s*$/, "")
+    .split(/\s+(?=\*\*[^*\n|]{2,80}:\*\*)/)[0]!
+    .trim();
 }
 
 function extractMarkdownTableRows(content: string): Array<Record<string, string>> {

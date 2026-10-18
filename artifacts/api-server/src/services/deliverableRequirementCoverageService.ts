@@ -9,6 +9,7 @@ import {
   type CarePlanAdlStructuredRow,
 } from "./carePlanAdlModel.js";
 import {
+  assembleDeliverableMarkdownFromSections,
   normaliseEvidenceTextForComparison,
   verifySpanDetailed,
 } from "./claimValidationService.js";
@@ -498,7 +499,9 @@ function buildDeliverableSectionIntegrityFailures(
 ): DeliverableRequirementCoverageFailure[] {
   if (structuredSections.size === 0) return [];
 
-  const markdownSections = structure.sections.filter((section) => section.title !== "Document");
+  const markdownSections = structure.sections
+    .filter((section) => section.title !== "Document")
+    .filter((section) => !isCarePlanPresentationSection(section));
   const topLevelMarkdownSections = markdownSections.filter((section) => section.headingLevel === 2);
   const failures: DeliverableRequirementCoverageFailure[] = [];
   if (topLevelMarkdownSections.length !== structuredSections.size) {
@@ -511,7 +514,7 @@ function buildDeliverableSectionIntegrityFailures(
     .map((section) => `${section.title}\n${section.content}`)
     .join("\n\n"));
   const missingStructuredSections = Array.from(structuredSections.values())
-    .filter((section) => !normalisedMarkdown.includes(normaliseContent(section.content)));
+    .filter((section) => !normalisedMarkdown.includes(normaliseContent(renderStructuredSectionForIntegrity(section))));
   if (missingStructuredSections.length > 0) {
     failures.push(deliverableSectionIntegrityFailure(
       `Structured deliverable sections are not represented in the persisted markdown artifact for requirementId(s): ${missingStructuredSections.map((section) => section.requirementId).join(", ")}.`,
@@ -519,6 +522,27 @@ function buildDeliverableSectionIntegrityFailures(
   }
 
   return failures;
+}
+
+function isCarePlanPresentationSection(section: MarkdownSection): boolean {
+  if (section.headingLevel !== 2) return false;
+  return [
+    "unapproved draft blocked",
+    "unapproved incomplete draft",
+    "completion checks that need review",
+    "completion checks requiring review",
+    "completion checks not passed",
+    "gate failures",
+    "gate failure list",
+    "suppression records",
+    "suppressed claims",
+    "unsupported requirements",
+  ].includes(section.normalisedTitle);
+}
+
+function renderStructuredSectionForIntegrity(section: PerRequirementDeliverableSection): string {
+  const rendered = assembleDeliverableMarkdownFromSections([section]);
+  return rendered.replace(/^##\s+.+?\n+/, "").trim() || section.content.trim();
 }
 
 function deliverableSectionIntegrityFailure(reason: string): DeliverableRequirementCoverageFailure {
@@ -2027,7 +2051,14 @@ function extractLabelValue(content: string, label: string): string | null {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = content.match(new RegExp(`\\*\\*${escaped}:\\*\\*\\s*([^\\n]+)`, "i")) ??
     content.match(new RegExp(`^\\s*${escaped}:\\s*([^\\n]+)`, "im"));
-  return match?.[1]?.trim() ?? null;
+  return match?.[1] ? trimLabelValueAtFieldBoundary(match[1]) : null;
+}
+
+function trimLabelValueAtFieldBoundary(value: string): string {
+  return value
+    .replace(/\s*\|\s*$/, "")
+    .split(/\s+(?=\*\*[^*\n|]{2,80}:\*\*)/)[0]!
+    .trim();
 }
 
 function extractMarkdownTableColumn(content: string, headerName: string): string[] {
