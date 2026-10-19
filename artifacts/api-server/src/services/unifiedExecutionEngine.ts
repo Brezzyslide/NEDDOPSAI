@@ -4789,7 +4789,7 @@ export function buildProfessionalDeliverableResponseSchema(
                           items: {
                             type: "object",
                             additionalProperties: false,
-                            required: ["chunkId", "documentTitle", "passage", "location", "evidenceClass"],
+                            required: ["chunkId", "documentTitle", "passage", "location", "evidenceClass", "citationMode"],
                             properties: {
                               chunkId: { type: "string" },
                               documentTitle: { type: "string" },
@@ -4958,7 +4958,7 @@ export function buildTargetedRequirementRepairResponseSchema(
                     items: {
                       type: "object",
                       additionalProperties: false,
-                      required: ["chunkId", "documentTitle", "passage", "location", "evidenceClass"],
+                      required: ["chunkId", "documentTitle", "passage", "location", "evidenceClass", "citationMode"],
                       properties: {
                         chunkId: { type: "string" },
                         documentTitle: { type: "string" },
