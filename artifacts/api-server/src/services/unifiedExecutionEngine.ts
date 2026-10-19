@@ -4658,7 +4658,8 @@ function formatStructuredDeliverableResponseContract(
             "documentTitle": "<source document title>",
             "passage": "<short exact supporting passage>",
             "location": "<page, section or chunk location>",
-            "evidenceClass": "<evidence class>"
+            "evidenceClass": "<evidence class>",
+            "citationMode": "<VERBATIM_SPAN for exact quotes, SUPPORTING_INTERPRETATION for paraphrased/source-supported claims, BLUEPRINT_AUTHORED for authored fixed text>"
           }
         ],
         "structuredRows": [
@@ -4698,7 +4699,8 @@ function formatTargetedRepairDeliverableResponseContract(): string {
             "documentTitle": "<source document title>",
             "passage": "<short exact supporting passage>",
             "location": "<page, section or chunk location>",
-            "evidenceClass": "<evidence class>"
+            "evidenceClass": "<evidence class>",
+            "citationMode": "<VERBATIM_SPAN for exact quotes, SUPPORTING_INTERPRETATION for paraphrased/source-supported claims, BLUEPRINT_AUTHORED for authored fixed text>"
           }
         ],
         "evidenceGaps": [
@@ -4794,6 +4796,10 @@ export function buildProfessionalDeliverableResponseSchema(
                               passage: { type: "string" },
                               location: { type: "string" },
                               evidenceClass: { type: "string" },
+                              citationMode: {
+                                type: "string",
+                                enum: ["VERBATIM_SPAN", "SUPPORTING_INTERPRETATION", "BLUEPRINT_AUTHORED"],
+                              },
                             },
                           },
                         },
@@ -4959,6 +4965,10 @@ export function buildTargetedRequirementRepairResponseSchema(
                         passage: { type: "string" },
                         location: { type: "string" },
                         evidenceClass: { type: "string" },
+                        citationMode: {
+                          type: "string",
+                          enum: ["VERBATIM_SPAN", "SUPPORTING_INTERPRETATION", "BLUEPRINT_AUTHORED"],
+                        },
                       },
                     },
                   },
@@ -6625,38 +6635,27 @@ function applyServerDerivedMobilityFields(
     mobilityDerivedRow("Number of workers required", mobilityWorkerCountValue(walk, transfer), transfer ?? walk),
     mobilityDerivedRow("Mobility overview", mobilityOverviewValue(walk, transfer), walk ?? transfer),
     mobilityDerivedRow("Mobility strategy", mobilityStrategyValue(walk, transfer), walk ?? transfer),
-  ] as Array<[MobilityField, string, DerivedAdlCell | undefined]>).map(([field, value, source]) => [
-    field,
-    value,
-    source?.sourceValue ?? "Absent",
-    source?.chunkId ?? "not-recorded-in-retrieved-evidence",
-    source ? "VERIFIED_MAPPING" : "NOT_ASSESSED",
-    source ? mobilityDerivedGuidance(field, value).text : "",
-    source ? "SYSTEM_DERIVED" : "",
-    source ? mobilityDerivedGuidance(field, value).basisField : "",
-  ]);
+  ] as Array<[MobilityField, string, DerivedAdlCell | undefined]>).map(([field, value, source]) => {
+    const guidance = source ? mobilityDerivedGuidance(field, value) : undefined;
+    return {
+      activity: field,
+      supportLevel: value,
+      workerDescription: guidance?.text ?? "No source value was recorded for this mobility field.",
+      sourceValue: source?.sourceValue ?? "Absent",
+      chunkId: source?.chunkId ?? "not-recorded-in-retrieved-evidence",
+      mappingMode: source ? "VERIFIED_MAPPING" as CarePlanAdlMappingMode : "NOT_ASSESSED" as CarePlanAdlMappingMode,
+      ...(guidance ? { derivedGuidance: guidance } : {}),
+    };
+  });
 
   return {
     ...section,
     content: renderMarkdownRows([
       "Field",
       "Value",
-      "Source value",
-      "Chunk ID",
-      "Mapping mode",
-      "Derived guidance",
-      "Guidance provenance",
-      "Guidance basis",
-    ], rows),
-    evidenceSources: mergeEvidenceSources(section.evidenceSources, [walk, transfer]
-      .filter((source): source is DerivedAdlCell => Boolean(source))
-      .map((source) => ({
-        chunkId: source.chunkId,
-        documentTitle: "Controlled intake checklist",
-        passage: `${source.sourceItems.join(", ")}: ${source.sourceValue}`,
-        location: source.chunkId,
-        evidenceClass: "client_record",
-      }))),
+      "Worker guidance",
+    ], rows.map((row) => [row.activity, row.supportLevel, row.workerDescription])),
+    structuredRows: rows,
   };
 }
 
@@ -6760,7 +6759,7 @@ function applyServerDerivedDisasterManagementFields(
     sourceNames.length
       ? `Source risk assessment: ${sourceNames.join("; ")}.`
       : "Source risk assessment: not recorded in retrieved evidence.",
-    renderMarkdownRows(["Field", "Recorded value", "Chunk ID"], rows),
+    renderMarkdownRows(["Field", "Recorded value"], rows.map(([field, value]) => [field, value])),
     "**Worker strategy:**",
     defaultDisasterWorkerStrategy(fields),
   ].join("\n\n");
@@ -6910,7 +6909,7 @@ function applyServerDerivedBehaviouralManagement(
           row.trigger,
           row.strategy,
           row.workerAction,
-          `${row.documentTitle} (${row.chunkId}): ${row.passage}`,
+          `${row.documentTitle}: ${row.passage}`,
         ]),
       ),
     ].join("\n\n");
@@ -7177,7 +7176,7 @@ function applyServerDerivedRestrictivePracticeRows(
         "Medication used to influence behaviour as recorded in the participant's BSP.",
         "Administer medication only as prescribed and only within the current BSP/medication authority.",
         "Do not use medication outside the prescription, BSP or authorisation evidence, and do not invent any other restrictive practice.",
-        `Authorisation recorded in BSP; expiry/review date not recorded in retrieved evidence (${chemical.chunkId})`,
+      "Authorisation recorded in BSP; expiry/review date not recorded in retrieved evidence",
         "Record and report use according to the BSP, medication administration process and restrictive-practice reporting requirements.",
       ]],
     ),

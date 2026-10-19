@@ -640,6 +640,7 @@ export interface ParsedDeliverableSectionEvidenceSource {
   passage: string;
   location: string;
   evidenceClass?: string;
+  citationMode?: "VERBATIM_SPAN" | "SUPPORTING_INTERPRETATION" | "BLUEPRINT_AUTHORED";
 }
 
 export interface ParsedDeliverableEvidenceGap {
@@ -779,6 +780,9 @@ export function assembleDeliverableMarkdownFromSections(
 function renderDeliverableSectionContent(section: ParsedDeliverableSection): string {
   if (isCarePlanAdlDeliverableSection(section) && (section.structuredRows ?? []).length > 0) {
     return renderCarePlanAdlStructuredTable(section.structuredRows ?? []);
+  }
+  if (section.requirementId === "care-plan-mobility-strategy" && (section.structuredRows ?? []).length > 0) {
+    return renderCarePlanMobilityStructuredTable(section.structuredRows ?? []);
   }
   return section.content.trim();
 }
@@ -1145,13 +1149,11 @@ function renderGenerationFailedGoalsTable(): string {
 
 function renderGenerationFailedMobilityTable(): string {
   return renderMarkdownRows(
-    ["Field", "Value", "Source value", "Chunk ID", "Mapping mode"],
+    ["Field", "Value", "Worker guidance"],
     ["Mobility aid required", "Aid or equipment used", "Transfer method", "Number of workers required", "Mobility overview", "Mobility strategy"].map((field) => [
       field,
       generationFailedCell(field),
-      "generation_failed",
-      "generation_failed",
-      "CITED_INTERPRETATION",
+      "Generation failed - no worker guidance was produced for this mobility field.",
     ]),
   );
 }
@@ -1453,12 +1455,6 @@ function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]
     "Activity",
     "Support level",
     "What the worker does",
-    "Source value",
-    "Chunk ID",
-    "Mapping mode",
-    "Derived guidance",
-    "Guidance provenance",
-    "Guidance basis",
   ], CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => {
     const row = byActivity.get(normaliseCarePlanAdlActivity(activity));
     if (!row) {
@@ -1466,26 +1462,26 @@ function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]
         activity,
         CARE_PLAN_ADL_GENERATION_FAILED_ROW.supportLevel,
         CARE_PLAN_ADL_GENERATION_FAILED_ROW.workerDescription,
-        CARE_PLAN_ADL_GENERATION_FAILED_ROW.sourceValue,
-        CARE_PLAN_ADL_GENERATION_FAILED_ROW.chunkId,
-        CARE_PLAN_ADL_GENERATION_FAILED_ROW.mappingMode,
-        "",
-        "",
-        "",
       ];
     }
     return [
       activity,
       escapeMarkdownTableCell(row.supportLevel),
       escapeMarkdownTableCell(stripLegacyAdlHandsOnProhibition(row.workerDescription)),
-      escapeMarkdownTableCell(row.sourceValue),
-      escapeMarkdownTableCell(row.chunkId),
-      row.mappingMode,
-      escapeMarkdownTableCell(row.derivedGuidance?.text ?? ""),
-      row.derivedGuidance?.provenance ?? "",
-      escapeMarkdownTableCell(row.derivedGuidance?.basisField ?? ""),
     ];
   }));
+}
+
+function renderCarePlanMobilityStructuredTable(rows: ParsedDeliverableStructuredRow[]): string {
+  return renderMarkdownRows([
+    "Field",
+    "Value",
+    "Worker guidance",
+  ], rows.map((row) => [
+    escapeMarkdownTableCell(row.activity),
+    escapeMarkdownTableCell(row.supportLevel),
+    escapeMarkdownTableCell(row.workerDescription || row.derivedGuidance?.text || "No worker guidance recorded."),
+  ]));
 }
 
 function isCarePlanAdlDeliverableSection(section: ParsedDeliverableSection): boolean {
@@ -1749,9 +1745,23 @@ function parseSectionEvidenceSources(value: unknown): ParsedDeliverableSectionEv
     const passage = typeof raw.passage === "string" ? raw.passage.trim() : "";
     const location = typeof raw.location === "string" ? raw.location.trim() : "";
     const evidenceClass = typeof raw.evidenceClass === "string" ? raw.evidenceClass.trim() : undefined;
+    const citationMode = parseEvidenceSourceCitationMode(raw.citationMode ?? raw.citation_mode);
     if (!chunkId || !documentTitle || !passage || !location) return [];
-    return [{ chunkId, documentTitle, passage, location, evidenceClass }];
+    return [{ chunkId, documentTitle, passage, location, evidenceClass, ...(citationMode ? { citationMode } : {}) }];
   });
+}
+
+function parseEvidenceSourceCitationMode(value: unknown): ParsedDeliverableSectionEvidenceSource["citationMode"] | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalised = value.trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (
+    normalised === "VERBATIM_SPAN" ||
+    normalised === "SUPPORTING_INTERPRETATION" ||
+    normalised === "BLUEPRINT_AUTHORED"
+  ) {
+    return normalised;
+  }
+  return undefined;
 }
 
 function parseSectionEvidenceGaps(value: unknown): ParsedDeliverableEvidenceGap[] {
