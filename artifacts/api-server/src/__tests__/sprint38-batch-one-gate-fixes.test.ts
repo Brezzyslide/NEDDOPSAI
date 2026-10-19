@@ -19,6 +19,7 @@ import {
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
 } from "../services/deliverableRequirementCoverageService";
+import { validateOpenAIStructuredOutputStrictSchema } from "../services/openAIStructuredOutputSchemaValidationService";
 import { validateWorkPackage } from "../services/workValidationService";
 import type { EvidencePack } from "../services/knowledgeResolutionService";
 import type { BlueprintExecutionContract, WorkBlueprint } from "../services/workBlueprintService";
@@ -950,5 +951,43 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(snapshotPersistence).toContain("throw err");
     expect(sessionPersistence).toContain("throw err");
     expect(gateFailurePath).not.toContain("}).catch(() => {})");
+  });
+
+  it("keeps professional deliverable schemas valid for OpenAI strict structured outputs", async () => {
+    process.env.DATABASE_URL ??= "postgresql://needsops_test:needsops_test@localhost:5432/needsops_test";
+    const {
+      buildProfessionalDeliverableResponseSchema,
+      buildTargetedRequirementRepairResponseSchema,
+    } = await import("../services/unifiedExecutionEngine");
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Michael.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+
+    const participantContext = {
+      ...professionalContext,
+      specificity: "PARTICIPANT_SPECIFIC" as const,
+      deliverable: {
+        ...professionalContext.deliverable,
+        standardisation: "participant_specific" as const,
+      },
+    };
+    const finalSchema = buildProfessionalDeliverableResponseSchema(participantContext);
+    const repairSchema = buildTargetedRequirementRepairResponseSchema(participantContext);
+
+    expect(() => validateOpenAIStructuredOutputStrictSchema(finalSchema.name, finalSchema.schema)).not.toThrow();
+    expect(() => validateOpenAIStructuredOutputStrictSchema(repairSchema.name, repairSchema.schema)).not.toThrow();
+    expect(() => validateOpenAIStructuredOutputStrictSchema("extra_required_key", {
+      type: "object",
+      additionalProperties: false,
+      required: ["present", "ghost"],
+      properties: {
+        present: { type: "string" },
+      },
+    })).toThrow(/unknown ghost/);
   });
 });

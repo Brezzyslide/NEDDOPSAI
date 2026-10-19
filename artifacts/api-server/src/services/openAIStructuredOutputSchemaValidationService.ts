@@ -17,8 +17,12 @@ function walkOpenAIStrictSchemaNode(value: unknown, path: string, errors: string
     const propertyKeys = Object.keys(properties as Record<string, unknown>);
     const required = Array.isArray(node.required) ? node.required.map(String) : [];
     const missing = propertyKeys.filter((key) => !required.includes(key));
+    const unlisted = required.filter((key) => !propertyKeys.includes(key));
     if (missing.length > 0) {
       errors.push(`${path}.required missing ${missing.join(", ")}`);
+    }
+    if (unlisted.length > 0) {
+      errors.push(`${path}.required includes unknown ${unlisted.join(", ")}`);
     }
     for (const [key, child] of Object.entries(properties as Record<string, unknown>)) {
       walkOpenAIStrictSchemaNode(child, `${path}.properties.${key}`, errors);
