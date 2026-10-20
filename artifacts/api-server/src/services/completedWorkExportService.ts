@@ -62,6 +62,44 @@ export interface IntermediateDocument {
   nodes:          DocumentNode[];
 }
 
+function exportDraftNoticeMarkdown(work: Awaited<ReturnType<typeof getCompletedWork>>): string | null {
+  if (!work?.approvalWorkflow || work.approvalWorkflow.approvalBlocked !== true) return null;
+  const failures = Array.isArray(work.approvalWorkflow.completionGateFailures)
+    ? work.approvalWorkflow.completionGateFailures
+    : [];
+  const lines = [
+    "# Unapproved Draft Notice",
+    "",
+    "This document is an unapproved draft. Completion checks did not pass, so it must not be actioned as a final care plan or given to workers as a current support document.",
+    "",
+    "## Unsatisfied Requirements",
+    "",
+  ];
+  if (failures.length === 0) {
+    lines.push("- Completion checks did not pass; no detailed requirement list was recorded.");
+  } else {
+    for (const failure of failures) {
+      if (typeof failure === "string") {
+        lines.push(`- ${failure}`);
+        continue;
+      }
+      if (!failure || typeof failure !== "object") continue;
+      const record = failure as { gate?: unknown; message?: unknown; details?: unknown };
+      const gate = typeof record.gate === "string" ? record.gate.replace(/_/g, " ") : null;
+      const message = typeof record.message === "string" ? record.message : null;
+      const heading = [gate, message].filter(Boolean).join(": ");
+      lines.push(`- ${heading || "Completion check did not pass."}`);
+      if (Array.isArray(record.details)) {
+        for (const detail of record.details.filter((item): item is string => typeof item === "string").slice(0, 12)) {
+          lines.push(`  - ${detail}`);
+        }
+      }
+    }
+  }
+  lines.push("", "---", "");
+  return lines.join("\n");
+}
+
 // ─── Markdown parser ──────────────────────────────────────────────────────────
 
 /**
@@ -923,7 +961,10 @@ export class CompletedWorkExportService {
       throw Object.assign(new Error("No content available for export"), { statusCode: 400 });
     }
 
-    const markdown   = resolvedVersion.contentMarkdown;
+    const draftNotice = exportDraftNoticeMarkdown(work);
+    const markdown   = draftNotice
+      ? `${draftNotice}${resolvedVersion.contentMarkdown}`
+      : resolvedVersion.contentMarkdown;
     // Normalise content format before parsing — converts JSON/fenced-JSON to
     // human-readable markdown so exporters never see raw braces or property names.
     const normalised = normaliseCompletedWorkContent(markdown);

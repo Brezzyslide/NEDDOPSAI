@@ -118,6 +118,44 @@ function isApprovalBlocked(work: CompletedWorkItem | null | undefined): boolean 
   return work?.approvalWorkflow?.approvalBlocked === true;
 }
 
+function completionGateFailureMessages(work: CompletedWorkItem | null | undefined): string[] {
+  const workflow = work?.approvalWorkflow;
+  if (!workflow || typeof workflow !== "object") return [];
+  const failures = (workflow as { completionGateFailures?: unknown }).completionGateFailures;
+  if (!Array.isArray(failures)) return [];
+  return failures
+    .map((failure) => {
+      if (typeof failure === "string") return failure;
+      if (!failure || typeof failure !== "object") return null;
+      const record = failure as { message?: unknown; gate?: unknown; details?: unknown };
+      const message = typeof record.message === "string" ? record.message : null;
+      const gate = typeof record.gate === "string" ? record.gate.replace(/_/g, " ") : null;
+      const details = Array.isArray(record.details)
+        ? record.details.filter((detail): detail is string => typeof detail === "string").slice(0, 3)
+        : [];
+      return [gate, message, ...details].filter(Boolean).join(": ");
+    })
+    .filter((message): message is string => Boolean(message && message.trim()));
+}
+
+function DraftAvailabilityBanner({ work }: { work: CompletedWorkItem }) {
+  if (!isApprovalBlocked(work)) return null;
+  const failures = completionGateFailureMessages(work);
+  return (
+    <div className="mb-4 rounded-xl border border-red-500/40 bg-red-950/25 p-4 text-sm text-red-100">
+      <p className="font-semibold text-red-200">Unapproved draft — do not action as a final plan</p>
+      <p className="mt-1 text-red-100/80">
+        This document was produced, but completion checks did not pass. It is available for review only, is not approved, and must not be given to workers as a current support plan.
+      </p>
+      {failures.length > 0 && (
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-red-100/80">
+          {failures.map((failure, index) => <li key={`${index}-${failure}`}>{failure}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 const ASSET_TYPE_META: Record<string, { icon: string; label: string; desc: string }> = {
   library_source:    { icon: "📚", label: "Organisation Library",  desc: "Verified knowledge from your library" },
   organisation_memory: { icon: "💡", label: "Organisation Memory", desc: "Retained organisational knowledge" },
@@ -1358,7 +1396,7 @@ export default function CompletedWorkViewer() {
             ↩ Reopen
           </button>
         )}
-        {(status === "approved" || status === "draft") && currentContent && (
+        {currentContent && (
           <DownloadMenu onDownload={downloadExport} exporting={exportingFmt} />
         )}
         {status !== "archived" && (
@@ -1496,6 +1534,7 @@ export default function CompletedWorkViewer() {
             <div className="flex-1 min-w-0 max-w-4xl">
               {tab === "work" && (
                 <div>
+                  {!hasBrokenPin && <DraftAvailabilityBanner work={work} />}
                   {!hasBrokenPin && generatedArtifacts.length > 0 && (
                     <GeneratedArtifactsPanel
                       artifacts={generatedArtifacts}

@@ -237,6 +237,95 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
   return created;
 }
 
+export async function blockCompletedWorkApproval(input: {
+  completedWorkId: string;
+  organizationId: string;
+  completionGateFailures: unknown[];
+  metadataOnlyCompletionFindings?: unknown[];
+  reason?: string;
+}): Promise<CompletedWorkItem> {
+  const approvalWorkflow = {
+    approvalBlocked: true,
+    approvalBlockedReason: input.reason ?? "This draft did not pass completion checks and cannot be submitted for approval.",
+    completionGateFailures: input.completionGateFailures,
+    metadataOnlyCompletionFindings: input.metadataOnlyCompletionFindings ?? [],
+  };
+
+  await withCompletedWorkTenant(input.organizationId, "completed_work.block_approval", async (client) => client
+    .update(completedWorkTable)
+    .set({
+      approvalWorkflow,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(completedWorkTable.id, input.completedWorkId),
+      eq(completedWorkTable.organizationId, input.organizationId),
+    )));
+
+  const updated = await getCompletedWork(input.completedWorkId, input.organizationId);
+  if (!updated) throw new Error("Completed work not found after approval workflow update");
+  return updated;
+}
+
+function clearedApprovalWorkflow(
+  existing: Record<string, unknown>,
+  actorUserId: string,
+  reason: string,
+): Record<string, unknown> {
+  return {
+    ...existing,
+    approvalBlocked: false,
+    approvalBlockedReason: null,
+    completionGateFailures: [],
+    metadataOnlyCompletionFindings: [],
+    approvalBlockClearedAt: new Date().toISOString(),
+    approvalBlockClearedByUserId: actorUserId,
+    approvalBlockClearReason: reason,
+    previousApprovalBlock: {
+      approvalBlockedReason: existing.approvalBlockedReason ?? null,
+      completionGateFailures: existing.completionGateFailures ?? [],
+      metadataOnlyCompletionFindings: existing.metadataOnlyCompletionFindings ?? [],
+    },
+  };
+}
+
+export async function clearCompletedWorkApprovalBlock(input: {
+  completedWorkId: string;
+  organizationId: string;
+  actorUserId: string;
+  reason: string;
+}): Promise<CompletedWorkItem> {
+  const existing = await getCompletedWork(input.completedWorkId, input.organizationId);
+  if (!existing) throw Object.assign(new Error("Completed work not found"), { statusCode: 404 });
+  if (existing.approvalWorkflow?.approvalBlocked !== true) return existing;
+
+  const approvalWorkflow = clearedApprovalWorkflow(existing.approvalWorkflow, input.actorUserId, input.reason);
+
+  await withCompletedWorkTenant(input.organizationId, "completed_work.clear_approval_block", async (client) => client
+    .update(completedWorkTable)
+    .set({
+      approvalWorkflow,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(completedWorkTable.id, input.completedWorkId),
+      eq(completedWorkTable.organizationId, input.organizationId),
+    )));
+
+  await logOrgEvent({
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    eventType: "completed_work_approval_block_cleared" as any,
+    resourceType: "completed_work",
+    resourceId: input.completedWorkId,
+    metadata: { reason: input.reason },
+  });
+
+  const updated = await getCompletedWork(input.completedWorkId, input.organizationId);
+  if (!updated) throw new Error("Completed work not found after approval workflow clear");
+  return updated;
+}
+
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function getCompletedWork(
@@ -579,6 +668,10 @@ export async function addVersion(
 
   const versionId = randomUUID();
   const now = new Date();
+  const shouldClearApprovalBlock = existing.approvalWorkflow?.approvalBlocked === true && reviewResult?.passed === true;
+  const clearedWorkflow = shouldClearApprovalBlock
+    ? clearedApprovalWorkflow(existing.approvalWorkflow, actorUserId, "Regenerated version passed completion gates.")
+    : null;
 
   await withCompletedWorkTenant(organizationId, "completed_work.version.add", async (client) => {
     await client.insert(completedWorkVersionsTable).values({
@@ -597,7 +690,11 @@ export async function addVersion(
 
     await client
       .update(completedWorkTable)
-      .set({ currentVersionId: versionId, updatedAt: now })
+      .set({
+        currentVersionId: versionId,
+        updatedAt: now,
+        ...(clearedWorkflow ? { approvalWorkflow: clearedWorkflow } : {}),
+      })
       .where(and(eq(completedWorkTable.id, id), eq(completedWorkTable.organizationId, organizationId)));
   });
 

@@ -1,5 +1,7 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { execFileSync } from "child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join, resolve } from "path";
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_REGISTRY, getRegistryEntry, getRegistryBlueprintReadinessState } from "../services/blueprintRegistry";
 import { resolveIntent } from "../services/blueprintIntentMap";
@@ -47,6 +49,17 @@ function source(relativePath: string): string {
 
 function workspaceSource(relativePath: string): string {
   return readFileSync(resolve(root, "../../..", relativePath), "utf8");
+}
+
+function docxDocumentXml(buffer: Buffer): string {
+  const dir = mkdtempSync(join(tmpdir(), "needsops-docx-"));
+  const path = join(dir, "document.docx");
+  try {
+    writeFileSync(path, buffer);
+    return execFileSync("unzip", ["-p", path, "word/document.xml"], { encoding: "utf8" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function manifest(overrides: Partial<WorkPackageManifest> = {}): WorkPackageManifest {
@@ -1564,7 +1577,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
     expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
     expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason)");
-    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)");
+    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section,");
+    expect(src).toContain("input.evidencePack");
+    expect(src).toContain("input.blueprintContract");
     expect(src).toContain("continue;");
   });
 
@@ -4123,23 +4138,161 @@ The strategies below implement the participant's behaviour support plan.
     expect(messageIngress).toContain("has an unapproved draft, but completion checks did not pass");
     expect(workroomRoute).toContain("Current status: unapproved draft blocked.");
     expect(taskWorkroom).toContain("Unapproved Draft Blocked");
+    expect(taskWorkroom).toContain("A draft exists for review, but it is not approved and must not be actioned as a final plan.");
     expect(taskCentre).toContain("Unapproved Draft Blocked");
     expect(activeWork).toContain("draft_blocked");
+    expect(completedViewer).toContain("DraftAvailabilityBanner");
+    expect(completedViewer).toContain("Unapproved draft — do not action as a final plan");
     expect(completedViewer).toContain("status === \"draft\" && !approvalBlocked");
     expect(completedViewer).toContain("Approval blocked");
     expect(completedPortal).toContain("Unapproved Draft Blocked");
   });
 
-  it("keeps post-artifact completion failures task-failing after completed work already exists", () => {
+  it("completed work on a coverage-short task renders and downloads with banner", () => {
+    const completedRoute = source("routes/v1/completedWork.ts");
+    const workroomRoute = source("routes/v1/taskWorkroom.ts");
+    const artifactService = source("services/completedWorkArtifactService.ts");
+    const exportService = source("services/completedWorkExportService.ts");
+    const completedViewer = workspaceSource("artifacts/needsops-web/src/pages/app/CompletedWorkViewer.tsx");
+    const completedPortal = workspaceSource("artifacts/needsops-web/src/pages/app/CompletedWorkPortal.tsx");
+    const taskWorkroom = workspaceSource("artifacts/needsops-web/src/pages/app/TaskWorkroomPage.tsx");
+
+    expect(completedRoute).toContain('"/organisations/:slug/completed-work/:id/export"');
+    expect(completedRoute).toContain("completedWorkExportService.export({");
+    expect(completedRoute).toContain("getGeneratedArtifactDownloadUrl");
+    expect(artifactService).toContain('artifact.generationStatus !== "stored"');
+    expect(artifactService).not.toContain("currentState");
+
+    expect(workroomRoute).toContain("const incompleteDraft = taskMetadata.incompleteDraft");
+    expect(workroomRoute).toContain("incompleteDraft?.completedWorkId");
+    expect(workroomRoute).toContain("workArtifactsTable.taskId");
+
+    expect(completedViewer).toContain("{currentContent && (");
+    expect(completedViewer).not.toContain('status === "approved" || status === "draft"');
+    expect(completedPortal).toContain("hasDownloadableCompletedWork");
+    expect(completedPortal).not.toContain("isApproved && onDownload");
+    expect(taskWorkroom).toContain("completedWork.length > 0");
+    expect(taskWorkroom).toContain('artifact.generationStatus !== "stored"');
+    expect(exportService).toContain("function exportDraftNoticeMarkdown");
+    expect(exportService).toContain("# Unapproved Draft Notice");
+    expect(exportService).toContain("## Unsatisfied Requirements");
+    expect(exportService).toContain("must not be actioned as a final care plan");
+  });
+
+  it("writes the unapproved-draft notice into generated DOCX bytes", async () => {
+    process.env.DATABASE_URL ??= "postgres://needsops_test:needsops_test@127.0.0.1:5432/needsops_test";
+    const { DocxExporter, parseMarkdown } = await import("../services/completedWorkExportService.js");
+    const exporter = new DocxExporter();
+    const noticeMarkdown = [
+      "# Unapproved Draft Notice",
+      "",
+      "This document is an unapproved draft. Completion checks did not pass, so it must not be actioned as a final care plan or given to workers as a current support document.",
+      "",
+      "## Unsatisfied Requirements",
+      "",
+      "- mandatory_deliverable_coverage: Mobility Strategy lacks cited support for transfer requirements.",
+      "",
+      "## Mobility Strategy",
+      "",
+      "| Field | Value | Worker guidance |",
+      "| --- | --- | --- |",
+      "| Transfer method | not recorded in retrieved evidence | Review with participant before actioning. |",
+    ].join("\n");
+
+    const result = await exporter.export({
+      title: "Participant Care Plan",
+      organisation: "MH&R Holdings",
+      generatedDate: "2026-10-21T00:00:00.000Z",
+      specialist: "Service Delivery Coordinator",
+      approvalStatus: "draft",
+      version: 1,
+      nodes: parseMarkdown(noticeMarkdown),
+    });
+    const xml = docxDocumentXml(result.buffer);
+
+    expect(xml).toContain("Unapproved Draft Notice");
+    expect(xml).toContain("must not be actioned as a final care plan");
+    expect(xml).toContain("Unsatisfied Requirements");
+    expect(xml).toContain("Mobility Strategy lacks cited support for transfer requirements.");
+  });
+
+  it("participant evidence shortfalls reach draft-with-gaps instead of short-circuiting", () => {
     const sourceText = source("services/unifiedExecutionEngine.ts");
-    const postArtifactBlock = sourceText.slice(
-      sourceText.indexOf('failedStage: "post_artifact_completion_gates"') - 1200,
-      sourceText.indexOf('failedStage: "post_artifact_completion_gates"') + 2600,
+    const sufficiencyStart = sourceText.indexOf("const participantDeliverableCanDeclareGaps");
+    const sufficiencyEnd = sourceText.indexOf("// PROFESSIONAL_WORK and TRANSIENT", sufficiencyStart);
+    const sufficiencyBlock = sourceText.slice(sufficiencyStart, sufficiencyEnd);
+    const validationBlock = sourceText.slice(
+      sourceText.indexOf("const participantDeliverableCanProceedWithGaps"),
+      sourceText.indexOf("if (!validationResult.passed && !participantDeliverableCanProceedWithGaps)"),
     );
 
-    expect(postArtifactBlock).toContain("artifactGate.failures");
-    expect(postArtifactBlock).toContain("status: \"failed\"");
-    expect(postArtifactBlock).toContain("message: `Blueprint completion gates blocked this work after artifact generation: ${blockingMessage}`");
-    expect(postArtifactBlock).not.toContain("approvalBlockedByCompletionGates = true");
+    expect(sufficiencyBlock).toContain("subjectParticipantIds.length > 0");
+    expect(sufficiencyBlock).toContain("participant deliverable continues as an unapproved draft with declared gaps");
+    expect(sufficiencyBlock).toContain("if (!participantDeliverableCanDeclareGaps)");
+    expect(validationBlock).toContain("subjectParticipantIds.length > 0");
+    expect(validationBlock).not.toContain("resolvedMandatoryRequirementCount > 0");
+  });
+
+  it("completed work on a failed task renders and downloads with banner", () => {
+    const completedRoute = source("routes/v1/completedWork.ts");
+    const workroomRoute = source("routes/v1/taskWorkroom.ts");
+    const artifactService = source("services/completedWorkArtifactService.ts");
+    const exportService = source("services/completedWorkExportService.ts");
+    const completedViewer = workspaceSource("artifacts/needsops-web/src/pages/app/CompletedWorkViewer.tsx");
+
+    expect(completedRoute).toContain('"/organisations/:slug/completed-work/:id/export"');
+    expect(completedRoute).toContain('"/organisations/:slug/completed-work/:id/artifacts/:artifactId/download"');
+    expect(workroomRoute).toContain("workArtifactsTable.taskId");
+    expect(artifactService).not.toContain("currentState");
+    expect(completedViewer).toContain("DraftAvailabilityBanner");
+    expect(completedViewer).toContain("{currentContent && (");
+    expect(exportService).toContain("exportDraftNoticeMarkdown(work)");
+  });
+
+  it("post-artifact gate failures with stored artifacts reconcile as draft-with-gaps instead of failed tasks", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+    const executionService = source("services/executionService.ts");
+    const executionCoordinator = source("services/executionCoordinatorService.ts");
+    const completedWork = source("services/completedWorkService.ts");
+    const artifactService = source("services/completedWorkArtifactService.ts");
+
+    expect(engine).toContain("if (!artifactGate.passed && primaryArtifactId)");
+    expect(engine).toContain("blockCompletedWorkApproval({");
+    expect(engine).toContain('failedStage: "post_artifact_completion_gates_block_approval"');
+    expect(engine).toContain("outcome: \"completed\"");
+    expect(engine).toContain("approvalBlocked: approvalBlockedByCompletionGates");
+    expect(completedWork).toContain("export async function blockCompletedWorkApproval");
+    expect(executionService).toContain("if (result.outcome === \"completed\")");
+    expect(executionService).toContain("reconcileTaskExecutionSuccess({");
+    expect(executionCoordinator).toContain("if (result.outcome === \"completed\" && result.completedWorkId)");
+    expect(executionCoordinator).toContain("reconcileTaskExecutionSuccess({");
+    expect(artifactService).toContain('artifact.generationStatus !== "stored"');
+    expect(artifactService).not.toContain("currentState");
+  });
+
+  it("clears approval blocks by reviewer acknowledgement and by passing regeneration", () => {
+    const route = source("routes/v1/completedWork.ts");
+    const completedWork = source("services/completedWorkService.ts");
+
+    expect(completedWork).toContain("export async function clearCompletedWorkApprovalBlock");
+    expect(completedWork).toContain("approvalBlocked: false");
+    expect(completedWork).toContain("previousApprovalBlock");
+    expect(completedWork).toContain("reviewResult?.passed === true");
+    expect(completedWork).toContain("Regenerated version passed completion gates.");
+    expect(route).toContain('"/organisations/:slug/completed-work/:id/clear-approval-block"');
+    expect(route).toContain("requireOwnerOrAdminOrManager(req, res)");
+    expect(route).toContain("acknowledgedGaps !== true");
+    expect(route).toContain("clearCompletedWorkApprovalBlock({");
+  });
+
+  it("no completed work means no document and a failed task", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+    const taskService = source("services/taskService.ts");
+
+    expect(sourceText).toContain('metadata: { failedStage: "artifact_generation" }');
+    expect(sourceText).toContain("Artifact generation failed: ${message}");
+    expect(taskService).toContain("export async function reconcileTaskExecutionFailure");
+    expect(taskService).toContain('currentState: "failed"');
+    expect(taskService).toContain("executionFailure");
   });
 });

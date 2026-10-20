@@ -71,13 +71,12 @@ import {
 } from "./workPackageService.js";
 import {
   buildNoResolvedMandatoryRequirementsMessage,
-  countResolvedMandatoryRequirements,
   validateWorkPackage,
 } from "./workValidationService.js";
 import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft, type ReviewResult } from "./selfReviewService.js";
-import { createDraft, submitForApproval } from "./completedWorkService.js";
+import { blockCompletedWorkApproval, createDraft, submitForApproval } from "./completedWorkService.js";
 import { generateCompletedWorkArtifacts } from "./completedWorkArtifactService.js";
 import { isTaskCancelled } from "./taskService.js";
 import { persistExecutionEvidence } from "./evidencePersistenceService.js";
@@ -1490,6 +1489,7 @@ export class UnifiedExecutionEngine {
       discoveryObservability.finalEvidenceChunks       = mergedPack.totalChunks;
 
       if (!isResultSufficient(sufficiency)) {
+        const participantDeliverableCanDeclareGaps = subjectParticipantIds.length > 0;
         const discoveryResultForMessage = {
           adapterName:           convergence.openClawAdapterName ?? "null_no_runtime",
           candidates:            openClawResult?.candidates ?? [],
@@ -1504,12 +1504,15 @@ export class UnifiedExecutionEngine {
           producedUsableEvidence: convergence.openClawCandidatesAccepted > 0,
         };
 
-        discoveryObservability.executionContinued = false;
-        discoveryObservability.blockReason =
-          `Evidence insufficient after parallel discovery (KRS + OpenClaw): ${sufficiency.status}`;
+        discoveryObservability.executionContinued = participantDeliverableCanDeclareGaps;
+        discoveryObservability.blockReason = participantDeliverableCanDeclareGaps
+          ? `Evidence insufficient after parallel discovery (KRS + OpenClaw): ${sufficiency.status}; participant deliverable continues as an unapproved draft with declared gaps.`
+          : `Evidence insufficient after parallel discovery (KRS + OpenClaw): ${sufficiency.status}`;
 
         void logOrgEvent({
-          eventType:      "execution_coordinator.error",
+          eventType:      participantDeliverableCanDeclareGaps
+            ? "execution_coordinator.pipeline_outcome"
+            : "execution_coordinator.error",
           organizationId,
           actorType:      "system",
           resourceType:   "evidence_discovery",
@@ -1517,12 +1520,14 @@ export class UnifiedExecutionEngine {
           metadata:       discoveryObservability as unknown as Record<string, unknown>,
         })?.catch(() => {});
 
-        return {
-          outcome:       "execution_failed",
-          manifestId:    manifest.id,
-          blueprintCode: blueprint?.code,
-          message:       buildInsufficientEvidenceMessage(sufficiency, discoveryResultForMessage),
-        };
+        if (!participantDeliverableCanDeclareGaps) {
+          return {
+            outcome:       "execution_failed",
+            manifestId:    manifest.id,
+            blueprintCode: blueprint?.code,
+            message:       buildInsufficientEvidenceMessage(sufficiency, discoveryResultForMessage),
+          };
+        }
       }
       }
       // PROFESSIONAL_WORK and TRANSIENT → no sufficiency gate; evidencePack may be null
@@ -1624,10 +1629,8 @@ export class UnifiedExecutionEngine {
       },
     }, organizationId).catch(() => {});
 
-    const resolvedMandatoryRequirementCount = countResolvedMandatoryRequirements(validationResult, evidencePack);
     const participantDeliverableCanProceedWithGaps =
-      subjectParticipantIds.length > 0 &&
-      resolvedMandatoryRequirementCount > 0;
+      subjectParticipantIds.length > 0;
 
     if (!validationResult.passed && !participantDeliverableCanProceedWithGaps) {
       const missingItems = validationResult.missingEvidenceItems ?? [];
@@ -2734,7 +2737,47 @@ export class UnifiedExecutionEngine {
         deliverableSections,
         professionalWork,
       });
-      if (!artifactGate.passed) {
+      if (!artifactGate.passed && primaryArtifactId) {
+        for (const failure of artifactGate.failures) {
+          const key = `${failure.gate}:${failure.message}`;
+          if (!approvalBlockingCompletionFailures.some((existing) => `${existing.gate}:${existing.message}` === key)) {
+            approvalBlockingCompletionFailures.push(failure);
+          }
+        }
+        approvalBlockedByCompletionGates = true;
+        professionalWork = {
+          ...(professionalWork ?? {}),
+          completion_gate_approval_blockers: approvalBlockingCompletionFailures,
+          completion_gate_metadata: metadataOnlyCompletionFailures,
+          suppressed_claims: collectParticipantCarePlanSuppressionRecords(deliverableSections),
+        };
+        await blockCompletedWorkApproval({
+          completedWorkId: completedWork.id,
+          organizationId,
+          completionGateFailures: approvalBlockingCompletionFailures.map((failure) => ({
+            gate: failure.gate,
+            message: plainCompletionFailure(failure),
+            details: (failure.details ?? []).map(plainCompletionFailureDetail),
+          })),
+          metadataOnlyCompletionFindings: metadataOnlyCompletionFailures.map((failure) => ({
+            gate: failure.gate,
+            message: failure.message,
+          })),
+        });
+        const blockingMessage = artifactGate.failures
+          .map((failure) => `${failure.gate}: ${failure.message}`)
+          .join("; ");
+        await updateManifestObservability(manifest.id, {
+          failureInfo: {
+            state: "awaiting_clarification",
+            failedStage: "post_artifact_completion_gates_block_approval",
+            rootCause: blockingMessage,
+            retryAvailable: true,
+            clarificationItems: buildRuntimeGateFailureItems(artifactGate.failures),
+            gateFailures: artifactGate.failures,
+          },
+        }, organizationId);
+      } else if (!artifactGate.passed) {
         const blockingMessage = artifactGate.failures
           .map((failure) => `${failure.gate}: ${failure.message}`)
           .join("; ");

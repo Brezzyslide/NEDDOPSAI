@@ -211,6 +211,26 @@ function hasBlockedDraft(task: { metadata?: Record<string, any> | null }): boole
   return !!incompleteDraft && typeof incompleteDraft === "object";
 }
 
+function incompleteDraftFailureMessages(task: { metadata?: Record<string, any> | null }): string[] {
+  const incompleteDraft = task.metadata?.incompleteDraft;
+  if (!incompleteDraft || typeof incompleteDraft !== "object") return [];
+  const failures = (incompleteDraft as { completionGateFailures?: unknown }).completionGateFailures;
+  if (!Array.isArray(failures)) return [];
+  return failures
+    .map((failure) => {
+      if (typeof failure === "string") return failure;
+      if (!failure || typeof failure !== "object") return null;
+      const record = failure as { gate?: unknown; message?: unknown; details?: unknown };
+      const gate = typeof record.gate === "string" ? record.gate.replace(/_/g, " ") : null;
+      const message = typeof record.message === "string" ? record.message : null;
+      const details = Array.isArray(record.details)
+        ? record.details.filter((detail): detail is string => typeof detail === "string").slice(0, 3)
+        : [];
+      return [gate, message, ...details].filter(Boolean).join(": ");
+    })
+    .filter((message): message is string => Boolean(message && message.trim()));
+}
+
 function completedWorkStatusLabel(work: CompletedWorkSummary): string {
   return work.approvalWorkflow?.approvalBlocked === true
     ? "unapproved draft blocked"
@@ -546,6 +566,7 @@ function TaskSidePanel({
   taskId: string;
 }) {
   const blockedDraft = hasBlockedDraft(task);
+  const blockedDraftFailures = incompleteDraftFailureMessages(task);
   const state = blockedDraft ? BLOCKED_DRAFT_STATE : STATE_CONFIG[task.currentState];
   const assignedRoles = plan?.assignedSpecialists ?? [];
   const failureReason = task.currentState === "failed"
@@ -586,8 +607,13 @@ function TaskSidePanel({
           <div className="mt-3 rounded-lg border border-red-500/30 bg-red-950/20 p-3">
             <p className="text-red-300 text-xs font-semibold mb-1">Unapproved draft blocked</p>
             <p className="text-red-200/80 text-xs leading-relaxed">
-              Completion checks did not pass. The task is not complete and the draft cannot be submitted for approval.
+              Completion checks did not pass. A draft exists for review, but it is not approved and must not be actioned as a final plan.
             </p>
+            {blockedDraftFailures.length > 0 && (
+              <ul className="mt-2 list-disc pl-4 text-red-200/80 text-xs space-y-1">
+                {blockedDraftFailures.map((failure, index) => <li key={`${index}-${failure}`}>{failure}</li>)}
+              </ul>
+            )}
           </div>
         )}
       </div>

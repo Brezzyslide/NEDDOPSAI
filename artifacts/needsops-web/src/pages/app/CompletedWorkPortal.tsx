@@ -152,6 +152,7 @@ function WorkCard({
   const [dlOpen, setDlOpen] = useState(false);
   const badge = isApprovalBlocked(item) ? BLOCKED_DRAFT_BADGE : STATUS_BADGE[item.status] ?? STATUS_BADGE.draft;
   const isApproved = item.status === "approved";
+  const hasDownloadableCompletedWork = Boolean(onDownload);
   const scoreColor = item.latestQualityScore == null ? "" :
     item.latestQualityScore >= 80 ? "text-emerald-300" :
     item.latestQualityScore >= 70 ? "text-amber-300" : "text-red-300";
@@ -221,7 +222,7 @@ function WorkCard({
             Open
           </button>
         )}
-        {isApproved && onDownload && (
+        {hasDownloadableCompletedWork && onDownload && (
           <div className="relative">
             <button
               onClick={() => setDlOpen(o => !o)}

@@ -7,6 +7,7 @@
  *   GET  /organisations/:slug/completed-work/:id/versions
  *   GET  /organisations/:slug/completed-work/:id/comments
  *   POST /organisations/:slug/completed-work/:id/submit
+ *   POST /organisations/:slug/completed-work/:id/clear-approval-block
  *   POST /organisations/:slug/completed-work/:id/approve
  *   POST /organisations/:slug/completed-work/:id/reject
  *   POST /organisations/:slug/completed-work/:id/archive
@@ -22,6 +23,7 @@ import {
   getCompletedWork,
   listCompletedWork,
   submitForApproval,
+  clearCompletedWorkApprovalBlock,
   approve,
   reject,
   archive,
@@ -167,6 +169,37 @@ router.post(
       res.json({ completedWork: item });
     } catch (err) { next(err); }
   }
+);
+
+router.post(
+  "/organisations/:slug/completed-work/:id/clear-approval-block",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdminOrManager(req, res)) return;
+      const ctx = req.tenantContext!;
+      const user = req.appUser!;
+      const { id } = req.params as { id: string };
+      const { acknowledgedGaps, reason } = req.body as { acknowledgedGaps?: boolean; reason?: string };
+      if (acknowledgedGaps !== true) {
+        res.status(400).json({
+          error: {
+            code: "GAP_ACKNOWLEDGEMENT_REQUIRED",
+            message: "acknowledgedGaps=true is required before clearing an approval block.",
+          },
+        });
+        return;
+      }
+      const item = await clearCompletedWorkApprovalBlock({
+        completedWorkId: id,
+        organizationId: ctx.tenantId,
+        actorUserId: user.id,
+        reason: reason?.trim() || "Reviewer acknowledged declared gaps and cleared the approval block.",
+      });
+      res.json({ completedWork: item });
+    } catch (err) { next(err); }
+  },
 );
 
 // ─── Approve ──────────────────────────────────────────────────────────────────

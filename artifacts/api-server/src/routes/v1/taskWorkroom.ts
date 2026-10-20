@@ -108,8 +108,10 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
     const completedWorkIds = new Set<string>();
     const executionCompletion = taskMetadata.executionCompletion as Record<string, unknown> | undefined;
     const approvalGate = taskMetadata.approvalGate as Record<string, unknown> | undefined;
+    const incompleteDraft = taskMetadata.incompleteDraft as Record<string, unknown> | undefined;
     if (typeof executionCompletion?.completedWorkId === "string") completedWorkIds.add(executionCompletion.completedWorkId);
     if (typeof approvalGate?.completedWorkId === "string") completedWorkIds.add(approvalGate.completedWorkId);
+    if (typeof incompleteDraft?.completedWorkId === "string") completedWorkIds.add(incompleteDraft.completedWorkId);
 
     const artifactLinks = await withTenantContext(
       { tenantId: ctx.tenantId, userId: user.id, purpose: "task_workroom.artifact_links" },
