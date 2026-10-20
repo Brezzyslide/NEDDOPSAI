@@ -2797,10 +2797,10 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       heading: "Goals",
       content,
       evidenceSources: [],
-    });
+    }, null);
 
     expect(guarded.content).toContain("Content not rendered because required evidence was not available");
-    expect(guarded.content).toContain("Suppressed claim");
+    expect(guarded.content).not.toContain("Improve personal hygiene routine");
     expect(guarded.suppressedClaims).toEqual([
       expect.objectContaining({
         section: "Goals",
@@ -2821,7 +2821,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         missingDocument: "Mealtime management risk assessment",
         reason: "The selected evidence was searched and no mealtime assessment was recorded.",
       }],
-    });
+    }, null);
 
     expect(guarded.content).toContain("No mealtime management risk assessment");
     expect(guarded.suppressedClaims ?? []).toHaveLength(0);
@@ -2833,7 +2833,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       heading: "Client Endorsement",
       content: "I have been involved in the development of this Care Plan. My needs, preferences, choices and goals have been considered, and I agree with the supports outlined in this plan.",
       evidenceSources: [],
-    });
+    }, null);
 
     expect(guarded.content).toContain("Participant or representative name:");
     expect(guarded.content).toContain("Signature:");
@@ -2857,7 +2857,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         "Uncontrolled when printed.",
       ].join("\n"),
       evidenceSources: [],
-    });
+    }, null);
 
     expect(guarded.content).toContain("Form ID: CP-001");
     expect(guarded.content).toContain("Version: 1.0");
@@ -2877,7 +2877,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         "Uncontrolled when printed.",
       ].join("\n"),
       evidenceSources: [],
-    });
+    }, null);
 
     expect(guarded.content).toContain("Form ID: CP-001");
     expect(guarded.content).not.toContain("To be confirmed by approver");
@@ -2902,7 +2902,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       heading: "Support Delivery and Client Safety",
       content,
       evidenceSources: [],
-    });
+    }, null);
 
     const renderedStatements = guarded.content.split("Content not rendered because required evidence was not available.")[0] ?? "";
     expect(renderedStatements).toContain("Immediate Notification Form");
@@ -2920,7 +2920,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]);
   });
 
-  it("escapes suppression records when the suppressed claim came from a markdown table row", () => {
+  it("records dropped markdown table claims without rendering them back into the section body", () => {
     const guarded = applyParticipantCarePlanClaimGuard({
       requirementId: "care-plan-goals",
       heading: "Goals",
@@ -2930,9 +2930,16 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         "| Baseline | Unsupported goal | Unsupported action |",
       ].join("\n"),
       evidenceSources: [],
-    });
+    }, null);
 
-    expect(guarded.content).toContain("Baseline \\| Unsupported goal \\| Unsupported action");
+    expect(guarded.content).toContain("Content not rendered because required evidence was not available");
+    expect(guarded.content).not.toContain("Baseline");
+    expect(guarded.content).not.toContain("Unsupported goal");
+    expect(guarded.suppressedClaims).toEqual([
+      expect.objectContaining({
+        claim: "Baseline | Unsupported goal | Unsupported action",
+      }),
+    ]);
     expect(guarded.content).not.toContain("| Baseline | Unsupported goal | Unsupported action |");
   });
 
