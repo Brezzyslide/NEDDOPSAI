@@ -526,6 +526,7 @@ async function main() {
     const rawSection = section as Parameters<typeof applyParticipantCarePlanClaimGuard>[0];
     return applyParticipantCarePlanClaimGuard(
       applyHistoricalReplayServerDerivedCarePlanFields(rawSection),
+      evidencePack,
     );
   }) as PerRequirementDeliverableSection[];
   const sectionContentProvenance = rawSections.map((section, index) =>
