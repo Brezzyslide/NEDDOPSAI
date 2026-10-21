@@ -10,6 +10,8 @@ import {
 } from "../services/blueprintRuntimeValidationService";
 import {
   assembleDeliverableMarkdownFromSections,
+  applyParticipantCarePlanClaimGuard,
+  collectParticipantCarePlanSuppressionRecords,
   verifySpanDetailed,
 } from "../services/claimValidationService";
 import {
@@ -698,6 +700,164 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(markdown).not.toContain("Guidance provenance");
     expect(markdown).not.toContain("chunk-transfer");
     expect(markdown).not.toContain("VERIFIED_MAPPING");
+  });
+
+  it("does not suppress participant claims supported by structured rows", () => {
+    const section = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: [
+        "| Field | Value | Worker guidance |",
+        "| --- | --- | --- |",
+        "| Walking aid requirement | Controlled intake checklist records walking without support; no separate equipment requirement is recorded. | Walking aid requirement: Controlled intake checklist records walking without support; no separate equipment requirement is recorded. |",
+        "| Transfer method | Transfers to and from bed without support. | Transfer method: Transfers to and from bed without support. |",
+      ].join("\n"),
+      evidenceSources: [],
+      structuredRows: [
+        {
+          activity: "Walking aid requirement",
+          supportLevel: "Controlled intake checklist records walking without support; no separate equipment requirement is recorded.",
+          workerDescription: "Walking aid requirement: Controlled intake checklist records walking without support; no separate equipment requirement is recorded.",
+          sourceValue: "Walk without aid: Without support",
+          chunkId: "chunk-walk",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        },
+        {
+          activity: "Transfer method",
+          supportLevel: "Transfers to and from bed without support.",
+          workerDescription: "Transfer method: Transfers to and from bed without support.",
+          sourceValue: "Transfer to/from bed: Without support",
+          chunkId: "chunk-walk",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        },
+      ],
+    };
+
+    const guarded = applyParticipantCarePlanClaimGuard(section, evidencePackWithChunk({
+      chunkId: "chunk-walk",
+      text: "Walk without aid: Without support. Transfer to/from bed: Without support.",
+    }));
+    const markdown = assembleDeliverableMarkdownFromSections([guarded]);
+
+    expect(collectParticipantCarePlanSuppressionRecords([guarded])).toHaveLength(0);
+    expect(markdown).toContain("Controlled intake checklist records walking without support");
+    expect(markdown).toContain("Transfers to and from bed without support");
+  });
+
+  it("keeps suppressed structured claims out of the rendered body", () => {
+    const unsupportedClaim = "Wheelchair transfer requires two workers.";
+    const section = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: [
+        "| Field | Value | Worker guidance |",
+        "| --- | --- | --- |",
+        `| Transfer method | ${unsupportedClaim} | Transfer method: ${unsupportedClaim} |`,
+      ].join("\n"),
+      evidenceSources: [],
+      structuredRows: [
+        {
+          activity: "Transfer method",
+          supportLevel: unsupportedClaim,
+          workerDescription: `Transfer method: ${unsupportedClaim}`,
+          sourceValue: "generation_failed",
+          chunkId: "generation_failed",
+          mappingMode: "NOT_ASSESSED" as const,
+        },
+      ],
+    };
+
+    const guarded = applyParticipantCarePlanClaimGuard(section, evidencePackWithChunk({
+      chunkId: "different-selected-chunk",
+      text: "The selected evidence pack does not contain the row provenance.",
+    }));
+    const markdown = assembleDeliverableMarkdownFromSections([guarded]);
+    const suppressionRecords = collectParticipantCarePlanSuppressionRecords([guarded]);
+
+    expect(suppressionRecords).toHaveLength(1);
+    expect(markdown).toContain("| Transfer method | not recorded in retrieved evidence | not recorded in retrieved evidence |");
+    expect(markdown).not.toContain(unsupportedClaim);
+    for (const record of suppressionRecords) {
+      expect(markdown).not.toContain(record.claim);
+    }
+  });
+
+  it("suppresses only unsupported structured rows in a mixed Mobility table", () => {
+    const supported = "Controlled intake checklist records walking without support; no separate equipment requirement is recorded.";
+    const unsupportedRows = [
+      ["Aid or equipment used", "Controlled intake checklist records walking without an aid.", "hallucinated-aid"],
+      ["Transfer method", "Transfers to and from bed without support.", "hallucinated-transfer"],
+      ["Number of workers required", "No worker assistance recorded for walking without an aid or bed transfers in the controlled intake checklist.", "hallucinated-workers"],
+      ["Mobility overview", "Controlled intake checklist records walking: Without support; bed transfers: Without support.", "hallucinated-overview"],
+      ["Mobility strategy", "Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk.", "hallucinated-strategy"],
+    ] as const;
+    const section = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: "Structured mobility rows supplied.",
+      evidenceSources: [],
+      structuredRows: [
+        {
+          activity: "Walking aid requirement",
+          supportLevel: supported,
+          workerDescription: `Walking aid requirement: ${supported}`,
+          sourceValue: "Walk without aid: Without support",
+          chunkId: "chunk-supported",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        },
+        ...unsupportedRows.map(([activity, value, chunkId]) => ({
+          activity,
+          supportLevel: value,
+          workerDescription: `${activity}: ${value}`,
+          sourceValue: "Without support",
+          chunkId,
+          mappingMode: "VERIFIED_MAPPING" as const,
+        })),
+      ],
+    };
+
+    const guarded = applyParticipantCarePlanClaimGuard(section, evidencePackWithChunk({
+      chunkId: "chunk-supported",
+      text: "Walk without aid: Without support.",
+    }));
+    const markdown = assembleDeliverableMarkdownFromSections([guarded]);
+    const suppressionRecords = collectParticipantCarePlanSuppressionRecords([guarded]);
+
+    expect(suppressionRecords).toHaveLength(5);
+    expect(markdown).toContain(`| Walking aid requirement | ${supported} | Walking aid requirement: ${supported} |`);
+    expect(markdown).toContain("| Aid or equipment used | not recorded in retrieved evidence | not recorded in retrieved evidence |");
+    expect(markdown).toContain("| Mobility strategy | not recorded in retrieved evidence | not recorded in retrieved evidence |");
+    expect(suppressionRecords.map((record) => record.claim)).toEqual(unsupportedRows.map(([activity, value]) => `${activity} | ${value} | ${activity}: ${value}`));
+  });
+
+  it("suppresses hallucinated structured-row provenance even when mapping mode looks verified", () => {
+    const claim = "Transfers to and from bed without support.";
+    const section = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: "Structured mobility rows supplied.",
+      evidenceSources: [],
+      structuredRows: [{
+        activity: "Transfer method",
+        supportLevel: claim,
+        workerDescription: `Transfer method: ${claim}`,
+        sourceValue: "Transfer to/from bed: Without support",
+        chunkId: "well-formed-but-not-selected",
+        mappingMode: "VERIFIED_MAPPING" as const,
+      }],
+    };
+
+    const guarded = applyParticipantCarePlanClaimGuard(section, evidencePackWithChunk({
+      chunkId: "selected-transfer-chunk",
+      text: "Transfer to/from bed: Without support.",
+    }));
+    const markdown = assembleDeliverableMarkdownFromSections([guarded]);
+    const suppressionRecords = collectParticipantCarePlanSuppressionRecords([guarded]);
+
+    expect(suppressionRecords).toHaveLength(1);
+    expect(suppressionRecords[0]?.claim).toContain(claim);
+    expect(markdown).not.toContain(claim);
+    expect(markdown).toContain("| Transfer method | not recorded in retrieved evidence | not recorded in retrieved evidence |");
   });
 
   it("keeps gate results stable when provenance columns are not rendered", () => {

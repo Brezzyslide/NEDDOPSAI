@@ -674,6 +674,8 @@ const CARE_PLAN_ADL_GENERATION_FAILED_ROW = {
   mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
 };
 
+const CARE_PLAN_UNSUPPORTED_CLAIM_ABSENCE_VALUE = "not recorded in retrieved evidence";
+
 type CarePlanBehaviourFold = "proactive" | "reactive" | "protective";
 
 interface CarePlanBehaviourStrategyRow {
@@ -818,19 +820,21 @@ export function normaliseCarePlanDeclaredInstrumentSection(
 
 export function applyParticipantCarePlanClaimGuard(
   section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | null,
 ): ParsedDeliverableSection {
   if (section.requirementId === "care-plan-client-endorsement") {
     return renderUnsignedClientEndorsement(section);
   }
   if (section.requirementId === "care-plan-document-control") {
-    return guardDocumentControlFields(section);
+    return guardDocumentControlFields(section, evidencePack);
   }
   if (section.requirementId === "care-plan-support-delivery-client-safety") {
-    return guardSupportDeliveryAndClientSafety(section);
+    return guardSupportDeliveryAndClientSafety(section, evidencePack);
   }
-  if (isCarePlanAdlDeliverableSection(section)) return section;
   if (!isParticipantClaimGuardedCarePlanSection(section.requirementId)) return section;
-  if (hasCitedSourceChunk(section) || hasStructuredAbsenceRecord(section)) return section;
+  const structuredRowsGuarded = applyStructuredRowClaimGuard(section, evidencePack);
+  if (structuredRowsGuarded !== section) return structuredRowsGuarded;
+  if (hasRecognisedCarePlanEvidence(section, evidencePack)) return section;
   if (isSupportedAbsenceStatement(section)) return section;
   return suppressWholeCarePlanSection(section, extractRenderableClaims(section.content));
 }
@@ -906,6 +910,21 @@ function hasCitedSourceChunk(section: ParsedDeliverableSection): boolean {
   return (section.evidenceSources ?? []).some((source) => source.chunkId.trim() && source.passage.trim());
 }
 
+function hasRecognisedCarePlanEvidence(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): boolean {
+  return hasCitedSourceChunk(section) || hasStructuredRowEvidence(section, evidencePack) || hasStructuredAbsenceRecord(section);
+}
+
+function hasStructuredRowEvidence(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): boolean {
+  return (section.structuredRows ?? []).some((row) => isEvidenceBackedStructuredRow(row, evidencePack));
+}
+
+function isEvidenceBackedStructuredRow(row: ParsedDeliverableStructuredRow, evidencePack: EvidencePack | null): boolean {
+  if (row.absenceRecord) return true;
+  const chunkId = row.chunkId.trim();
+  if (!chunkId || !evidencePack?.chunks?.some((chunk) => chunk.chunkId === chunkId)) return false;
+  return row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION";
+}
+
 function hasOrganisationalSource(section: ParsedDeliverableSection): boolean {
   return (section.evidenceSources ?? []).some((source) =>
     source.chunkId.trim() &&
@@ -946,11 +965,11 @@ function renderUnsignedClientEndorsement(section: ParsedDeliverableSection): Par
   };
 }
 
-function guardDocumentControlFields(section: ParsedDeliverableSection): ParsedDeliverableSection {
+function guardDocumentControlFields(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): ParsedDeliverableSection {
   const lines = section.content.split(/\r?\n/);
   const kept: string[] = [];
   const suppressed: ParsedDeliverableSuppressedClaim[] = [];
-  const cited = hasCitedSourceChunk(section) || hasStructuredAbsenceRecord(section);
+  const cited = hasRecognisedCarePlanEvidence(section, evidencePack);
 
   for (const line of lines) {
     if (isDocumentControlNextReviewLine(line) && !cited && !isComputedReviewDateLine(line)) {
@@ -981,11 +1000,11 @@ type CarePlanRenderedStatementNature =
   | "regulatory-obligation"
   | "system-metadata";
 
-function guardSupportDeliveryAndClientSafety(section: ParsedDeliverableSection): ParsedDeliverableSection {
+function guardSupportDeliveryAndClientSafety(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): ParsedDeliverableSection {
   const claims = extractRenderableClaims(section.content);
   if (claims.length === 0) return section;
 
-  const cited = hasCitedSourceChunk(section);
+  const cited = hasRecognisedCarePlanEvidence(section, evidencePack);
   const hasOrgSource = hasOrganisationalSource(section);
   const kept: string[] = [];
   const suppressed: ParsedDeliverableSuppressedClaim[] = [];
@@ -1008,7 +1027,7 @@ function guardSupportDeliveryAndClientSafety(section: ParsedDeliverableSection):
       }
       continue;
     }
-    if (cited || hasStructuredAbsenceRecord(section) || isSupportedAbsenceStatement(section)) {
+    if (cited || isSupportedAbsenceStatement(section)) {
       kept.push(claim);
     } else {
       suppressed.push(buildSuppressionRecord(
@@ -1027,6 +1046,50 @@ function guardSupportDeliveryAndClientSafety(section: ParsedDeliverableSection):
       renderSuppressionNotice(suppressed),
     ].filter((part) => part.trim()).join("\n\n"),
     suppressedClaims: [...(section.suppressedClaims ?? []), ...suppressed],
+  };
+}
+
+function applyStructuredRowClaimGuard(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | null,
+): ParsedDeliverableSection {
+  if (!section.structuredRows?.length) return section;
+  const suppressed: ParsedDeliverableSuppressedClaim[] = [];
+  const rows = section.structuredRows.map((row) => {
+    if (isEvidenceBackedStructuredRow(row, evidencePack)) return row;
+    suppressed.push(buildSuppressionRecord(
+      section.heading,
+      structuredRowClaim(row),
+      "No supporting cited source chunk was provided for this participant-attributed claim.",
+    ));
+    return suppressedStructuredRow(row);
+  });
+  if (suppressed.length === 0) return section;
+  return {
+    ...section,
+    content: "Structured rows with unsupported provenance were not rendered as factual claims. See suppression records for details.",
+    structuredRows: rows,
+    suppressedClaims: [...(section.suppressedClaims ?? []), ...suppressed],
+  };
+}
+
+function structuredRowClaim(row: ParsedDeliverableStructuredRow): string {
+  return [
+    row.activity,
+    row.supportLevel,
+    row.workerDescription,
+  ].filter((value) => value.trim()).join(" | ");
+}
+
+function suppressedStructuredRow(row: ParsedDeliverableStructuredRow): ParsedDeliverableStructuredRow {
+  return {
+    ...row,
+    supportLevel: CARE_PLAN_UNSUPPORTED_CLAIM_ABSENCE_VALUE,
+    workerDescription: CARE_PLAN_UNSUPPORTED_CLAIM_ABSENCE_VALUE,
+    sourceValue: "Absent",
+    chunkId: "not-recorded-in-retrieved-evidence",
+    mappingMode: "NOT_ASSESSED",
+    derivedGuidance: undefined,
   };
 }
 
@@ -1055,6 +1118,7 @@ function suppressWholeCarePlanSection(
   return {
     ...section,
     content: renderSuppressionNotice(records),
+    structuredRows: [],
     suppressedClaims: [...(section.suppressedClaims ?? []), ...records],
   };
 }
@@ -1067,18 +1131,8 @@ function buildSuppressionRecord(section: string, claim: string, reason: string):
   };
 }
 
-function renderSuppressionNotice(records: ParsedDeliverableSuppressedClaim[]): string {
-  return [
-    "Content not rendered because required evidence was not available.",
-    "",
-    renderMarkdownRows(
-      ["Suppressed claim", "Reason"],
-      records.map((record) => [
-        escapeMarkdownTableCell(record.claim),
-        escapeMarkdownTableCell(record.reason),
-      ]),
-    ),
-  ].join("\n");
+function renderSuppressionNotice(_records: ParsedDeliverableSuppressedClaim[]): string {
+  return "Content not rendered because required evidence was not available. See suppression records for details.";
 }
 
 function extractRenderableClaims(content: string): string[] {
