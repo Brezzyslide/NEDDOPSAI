@@ -302,7 +302,12 @@ function TaskProposalCard({
             <div className="flex flex-col gap-2">
               {participantCandidates.map(candidate => {
                 const label = candidate.displayName ?? candidate.preferredName ?? "Unnamed participant";
-                const detail = candidate.externalParticipantId ? `ID ${candidate.externalParticipantId}` : null;
+                const details = [
+                  candidate.preferredName ? `Preferred: ${candidate.preferredName}` : null,
+                  `Participant ID ${candidate.id}`,
+                  candidate.externalParticipantId ? `External ID ${candidate.externalParticipantId}` : null,
+                  candidate.isSuggestion ? "Suggested match" : null,
+                ].filter(Boolean);
                 return (
                   <button
                     key={candidate.id}
@@ -312,7 +317,7 @@ function TaskProposalCard({
                   >
                     <span className="block text-sm font-semibold text-[#E2E8F0]">{label}</span>
                     <span className="block text-xs text-[#64748B] mt-0.5">
-                      {[detail, candidate.isSuggestion ? "Suggested match" : null].filter(Boolean).join(" · ")}
+                      {details.join(" · ")}
                     </span>
                   </button>
                   );

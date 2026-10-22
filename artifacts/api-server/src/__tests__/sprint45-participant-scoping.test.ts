@@ -264,6 +264,28 @@ describe("participant-scoped knowledge retrieval", () => {
     expect(result.status).toBe("confirmation_required");
     expect(result.subjectParticipantIds).toEqual([]);
     expect(result.candidates.map(candidate => candidate.id)).toEqual(["participant-a"]);
+    expect(result.clarifyingQuestion).toContain("confirmation button");
+  });
+
+  it("d2b. confirming the picker candidate resolves the subject participant explicitly", async () => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "Michael Roberts",
+      preferredName: "Michael",
+      externalParticipantId: "MR-001",
+    }];
+
+    const { resolveSubjectParticipantForTaskRequest } = await import("../services/taskParticipantService.js");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Complete a care plan for Michael",
+      explicitSubjectParticipantIds: ["participant-a"],
+    });
+
+    expect(result.status).toBe("resolved");
+    expect(result.subjectParticipantIds).toEqual(["participant-a"]);
+    expect(result.candidates).toEqual([]);
   });
 
   it("d3. exact live payload extracts John Deo from original user wording, not generated description text", async () => {

@@ -312,6 +312,15 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     source: input.originatingModule ?? "task_centre",
     explicitSeparate: input.allowDuplicate === true,
     createdAt: new Date().toISOString(),
+    participantConfirmation: subjectParticipantIds.length > 0
+      ? {
+          status: "confirmed",
+          confirmedByUserId: input.originatingUserId,
+          confirmedAt: new Date().toISOString(),
+          confirmedCandidateIds: subjectParticipantIds,
+          source: "explicit_subject_participant_ids",
+        }
+      : undefined,
   };
 
   const taskRow: InsertTask = {

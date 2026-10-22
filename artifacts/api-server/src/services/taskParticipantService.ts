@@ -400,7 +400,7 @@ export async function resolveSubjectParticipantForTaskRequest(
       candidates,
       staffConflicts,
       requestedName: inferredName || undefined,
-      clarifyingQuestion: "Please confirm this is the participant for the task before I retrieve participant documents.",
+      clarifyingQuestion: "Select the matching participant using the confirmation button before I retrieve participant documents.",
     };
   }
 
@@ -411,7 +411,7 @@ export async function resolveSubjectParticipantForTaskRequest(
       candidates,
       staffConflicts,
       requestedName: inferredName || undefined,
-      clarifyingQuestion: "Please confirm which participant this task is for before I retrieve participant documents.",
+      clarifyingQuestion: "Select the matching participant using the confirmation buttons before I retrieve participant documents.",
     };
   }
 

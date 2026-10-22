@@ -11,6 +11,32 @@ import { useAuthFetch } from "@/lib/api";
 
 type TaskState = "draft" | "queued" | "planning" | "awaiting_approval" | "evidence_required" | "approved" | "executing" | "completed" | "cancelled" | "failed";
 
+interface ParticipantResolutionCandidate {
+  id: string;
+  displayName?: string | null;
+  preferredName?: string | null;
+  externalParticipantId?: string | null;
+  isSuggestion?: boolean;
+}
+
+interface ParticipantResolutionState {
+  status: "confirmation_required" | "ambiguous" | "unresolved";
+  requestedName?: string;
+  clarifyingQuestion?: string;
+  candidates?: ParticipantResolutionCandidate[];
+}
+
+interface CreateTaskBody {
+  title: string;
+  description?: string;
+  priority: string;
+  subjectParticipantIds?: string[];
+}
+
+type CreateTaskResult =
+  | { kind: "created"; task?: unknown }
+  | { kind: "participant_resolution_required"; participantResolution: ParticipantResolutionState };
+
 const STATE_TABS: { label: string; states: TaskState[] }[] = [
   { label: "Needs Attention", states: ["awaiting_approval", "evidence_required", "failed"] },
   { label: "Active", states: ["queued", "planning", "approved", "executing"] },
@@ -57,6 +83,8 @@ export default function TaskCentrePage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newPriority, setNewPriority] = useState<string>("normal");
+  const [participantResolution, setParticipantResolution] = useState<ParticipantResolutionState | null>(null);
+  const [pendingCreateBody, setPendingCreateBody] = useState<CreateTaskBody | null>(null);
 
   const currentTab = STATE_TABS[activeTab]!;
 
@@ -67,18 +95,47 @@ export default function TaskCentrePage() {
     enabled: !!slug,
   });
 
+  const clearCreateForm = () => {
+    setShowCreate(false);
+    setNewTitle("");
+    setNewDesc("");
+    setNewPriority("normal");
+    setParticipantResolution(null);
+    setPendingCreateBody(null);
+  };
+
+  const buildCreateBody = (): CreateTaskBody => ({
+    title: newTitle,
+    description: newDesc,
+    priority: newPriority,
+  });
+
   const createMutation = useMutation({
-    mutationFn: (body: object) =>
-      apiFetch(`/v1/organisations/${slug}/tasks`, {
+    mutationFn: async (body: CreateTaskBody): Promise<CreateTaskResult> => {
+      const response = await apiFetch(`/v1/organisations/${slug}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).then(r => r.json()),
-    onSuccess: () => {
-      setShowCreate(false);
-      setNewTitle("");
-      setNewDesc("");
-      setNewPriority("normal");
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 409 && payload?.error?.code === "PARTICIPANT_RESOLUTION_REQUIRED") {
+        return {
+          kind: "participant_resolution_required",
+          participantResolution: payload.error.participantResolution as ParticipantResolutionState,
+        };
+      }
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to create task");
+      }
+      return { kind: "created", task: payload?.task };
+    },
+    onSuccess: (result, body) => {
+      if (result.kind === "participant_resolution_required") {
+        setParticipantResolution(result.participantResolution);
+        setPendingCreateBody(body);
+        return;
+      }
+      clearCreateForm();
       qc.invalidateQueries({ queryKey: ["tasks", slug] });
     },
   });
@@ -95,7 +152,11 @@ export default function TaskCentrePage() {
             <p className="text-[#64748B] text-sm mt-1">AI-assisted tasks managed by your workforce</p>
           </div>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => {
+              setParticipantResolution(null);
+              setPendingCreateBody(null);
+              setShowCreate(true);
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00D4FF]/90 transition-colors"
           >
             + New Task
@@ -139,22 +200,80 @@ export default function TaskCentrePage() {
                   <option value="urgent">Urgent</option>
                 </select>
               </div>
+              {participantResolution && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 space-y-2">
+                  <p className="text-amber-300 text-xs font-semibold uppercase tracking-wider">
+                    Participant confirmation required
+                  </p>
+                  <p className="text-[#CBD5E1] text-xs">
+                    {participantResolution.clarifyingQuestion ?? "Select the participant before creating this task."}
+                  </p>
+                  {(participantResolution.candidates ?? []).length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {(participantResolution.candidates ?? []).map(candidate => {
+                        const label = candidate.displayName ?? candidate.preferredName ?? "Unnamed participant";
+                        const details = [
+                          candidate.preferredName ? `Preferred: ${candidate.preferredName}` : null,
+                          `Participant ID ${candidate.id}`,
+                          candidate.externalParticipantId ? `External ID ${candidate.externalParticipantId}` : null,
+                          candidate.isSuggestion ? "Suggested match" : null,
+                        ].filter(Boolean);
+                        return (
+                          <button
+                            key={candidate.id}
+                            type="button"
+                            onClick={() => createMutation.mutate({
+                              ...(pendingCreateBody ?? buildCreateBody()),
+                              subjectParticipantIds: [candidate.id],
+                            })}
+                            disabled={createMutation.isPending}
+                            className="w-full text-left px-3 py-2 rounded-lg border border-[#1E3A5F] bg-[#0B1829] hover:border-[#00D4FF]/40 disabled:opacity-50 transition-colors"
+                          >
+                            <span className="block text-sm font-semibold text-[#E2E8F0]">{label}</span>
+                            <span className="block text-xs text-[#64748B] mt-0.5">{details.join(" · ")}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-[#94A3B8] text-xs">
+                      {participantResolution.requestedName
+                        ? `No participant found matching "${participantResolution.requestedName}".`
+                        : "No matching participant was found."}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setParticipantResolution(null);
+                      setPendingCreateBody(null);
+                    }}
+                    className="text-xs text-[#94A3B8] hover:text-[#E2E8F0] transition-colors"
+                  >
+                    Decline / choose later
+                  </button>
+                </div>
+              )}
               <div className="flex gap-3 pt-1">
                 <button
-                  onClick={() => createMutation.mutate({ title: newTitle, description: newDesc, priority: newPriority })}
+                  onClick={() => {
+                    setParticipantResolution(null);
+                    setPendingCreateBody(null);
+                    createMutation.mutate(buildCreateBody());
+                  }}
                   disabled={!newTitle.trim() || createMutation.isPending}
                   className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
                 >
                   {createMutation.isPending ? "Submitting…" : "Submit to Chief of Staff"}
                 </button>
                 <button
-                  onClick={() => setShowCreate(false)}
+                  onClick={clearCreateForm}
                   className="px-4 py-2 text-sm text-[#64748B] hover:text-[#E2E8F0] transition-colors"
                 >
                   Cancel
                 </button>
               </div>
-              {createMutation.isSuccess && (
+              {createMutation.isSuccess && createMutation.data?.kind === "created" && (
                 <p className="text-emerald-400 text-xs">Task created and assigned to your AI workforce.</p>
               )}
               {createMutation.isError && (

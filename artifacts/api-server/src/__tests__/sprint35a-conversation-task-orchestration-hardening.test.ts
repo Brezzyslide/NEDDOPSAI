@@ -725,6 +725,60 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("subjectParticipantIds: subjectParticipantId ? [subjectParticipantId] : undefined");
   });
 
+  it("manual create task participant-resolution response gives the client an actionable confirmation state", () => {
+    const workforceChatPage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/WorkforceChatPage.tsx"), "utf8");
+    const conversationRoute = source("routes/v1/conversations.ts");
+
+    expect(conversationRoute).toContain('err?.code === "PARTICIPANT_RESOLUTION_REQUIRED"');
+    expect(conversationRoute).toContain("participantResolution: err.participantResolution");
+    expect(workforceChatPage).toContain('d?.error?.code === "PARTICIPANT_RESOLUTION_REQUIRED"');
+    expect(workforceChatPage).toContain("setParticipantResolutionByProposal");
+    expect(workforceChatPage).toContain("Participant ID ${candidate.id}");
+    expect(workforceChatPage).toContain("subjectParticipantIds: subjectParticipantId ? [subjectParticipantId] : undefined");
+  });
+
+  it("Task Centre create handles participant confirmation before retrying with subjectParticipantIds", () => {
+    const taskCentrePage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskCentrePage.tsx"), "utf8");
+    const tasksRoute = source("routes/v1/tasks.ts");
+
+    expect(tasksRoute).toContain('err?.code === "PARTICIPANT_RESOLUTION_REQUIRED"');
+    expect(tasksRoute).toContain("participantResolution: err.participantResolution");
+    expect(taskCentrePage).toContain('payload?.error?.code === "PARTICIPANT_RESOLUTION_REQUIRED"');
+    expect(taskCentrePage).toContain('kind: "participant_resolution_required"');
+    expect(taskCentrePage).toContain("Participant ID ${candidate.id}");
+    expect(taskCentrePage).toContain("subjectParticipantIds: [candidate.id]");
+  });
+
+  it("Task Centre decline clears participant confirmation without submitting create", () => {
+    const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskCentrePage.tsx"), "utf8");
+    const declineBlock = src.slice(
+      src.indexOf("Decline / choose later") - 260,
+      src.indexOf("Decline / choose later") + 80,
+    );
+
+    expect(declineBlock).toContain("setParticipantResolution(null)");
+    expect(declineBlock).toContain("setPendingCreateBody(null)");
+    expect(declineBlock).not.toContain("createMutation.mutate");
+  });
+
+  it("participant confirmation copy points at the UI confirmation button rather than a conversational answer", () => {
+    const src = source("services/taskParticipantService.ts");
+
+    expect(src).toContain("Select the matching participant using the confirmation button");
+    expect(src).not.toContain("Please confirm this is the participant for the task before I retrieve participant documents.");
+  });
+
+  it("confirmed participant selection is recorded in task creation metadata", () => {
+    const src = source("services/taskService.ts");
+
+    expect(src).toContain("participantConfirmation");
+    expect(src).toContain('status: "confirmed"');
+    expect(src).toContain("confirmedByUserId: input.originatingUserId");
+    expect(src).toContain("confirmedAt: new Date().toISOString()");
+    expect(src).toContain("confirmedCandidateIds: subjectParticipantIds");
+    expect(src).toContain('source: "explicit_subject_participant_ids"');
+  });
+
   it("chat send failures keep the user message visible and attach the failure response", () => {
     const workforceChatPage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/WorkforceChatPage.tsx"), "utf8");
     const taskWorkroomPage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskWorkroomPage.tsx"), "utf8");
