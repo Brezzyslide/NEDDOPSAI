@@ -54,6 +54,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/workers/knowledgeIngestionWorker.ts"),
       path.resolve(artifactDir, "src/pdf-runtime-smoke.ts"),
       path.resolve(artifactDir, "src/scripts/db-bootstrap.ts"),
+      path.resolve(artifactDir, "src/scripts/db-runtime-credentials.ts"),
       path.resolve(artifactDir, "src/scripts/process-pending-curation.ts"),
       path.resolve(artifactDir, "src/scripts/run-care-plan-task.ts"),
       path.resolve(artifactDir, "src/scripts/reconcile-workforce-dna-publication.ts"),

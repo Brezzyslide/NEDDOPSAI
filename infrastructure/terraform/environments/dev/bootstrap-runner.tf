@@ -164,6 +164,10 @@ resource "aws_ecs_task_definition" "db_bootstrap" {
           valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
         },
         {
+          name      = "NEEDSOPS_API_APP_PASSWORD"
+          valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_API_APP_PASSWORD::"
+        },
+        {
           name      = "NEEDSOPS_PLATFORM_APP_PASSWORD"
           valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_PLATFORM_APP_PASSWORD::"
         },

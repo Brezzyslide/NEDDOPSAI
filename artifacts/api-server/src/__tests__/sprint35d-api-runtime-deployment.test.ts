@@ -111,4 +111,32 @@ describe("Sprint 35D API runtime deployment", () => {
     expect(dbIndex).toContain("sslmode=verify-full");
     expect(dbIndex).not.toContain("console.log(process.env.DATABASE_URL");
   });
+
+  it("wires API runtime to the non-rotating application database credential", () => {
+    const apiRuntimeTerraform = readFileSync(
+      join(process.cwd(), "../../infrastructure/terraform/environments/dev/api-runtime.tf"),
+      "utf8",
+    );
+    const apiSecretsBlock = apiRuntimeTerraform.slice(
+      apiRuntimeTerraform.indexOf('data "aws_iam_policy_document" "api_execution_secrets"'),
+      apiRuntimeTerraform.indexOf('resource "aws_iam_role_policy" "api_execution_secrets"'),
+    );
+    const containerSecretsBlock = apiRuntimeTerraform.slice(
+      apiRuntimeTerraform.indexOf("      secrets = ["),
+      apiRuntimeTerraform.indexOf("      logConfiguration = {"),
+    );
+    const containerEnvironmentBlock = apiRuntimeTerraform.slice(
+      apiRuntimeTerraform.indexOf("      environment = ["),
+      apiRuntimeTerraform.indexOf("      secrets = ["),
+    );
+
+    expect(apiSecretsBlock).not.toContain("master_user_secret");
+    expect(containerEnvironmentBlock).toContain('name  = "DB_USERNAME"');
+    expect(containerEnvironmentBlock).toContain('value = "needsops_api_app"');
+    expect(containerSecretsBlock).not.toContain('name  = "DB_USERNAME"');
+    expect(containerSecretsBlock).toContain(
+      '${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_API_APP_PASSWORD::',
+    );
+    expect(containerSecretsBlock).not.toContain("${aws_db_instance.postgres.master_user_secret[0].secret_arn}");
+  });
 });

@@ -16,6 +16,7 @@ import {
   expectedProfessionalSectionCount,
   type BlueprintAcceptanceResult,
 } from "../bootstrap/blueprintAcceptance";
+import { configureApiRuntimeCredential } from "../scripts/db-runtime-credentials";
 
 class FakeMigrationClient implements MigrationDbClient {
   public readonly queries: Array<{ text: string; values?: unknown[] }> = [];
@@ -311,6 +312,85 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(source).toContain('process.env["NEEDSOPS_RUN_DRIZZLE_PUSH"] === "true"');
     expect(source).toContain("Skipping Drizzle schema push; ordered platform migrations are authoritative");
     expect(source).toContain("await runPlatformMigrations");
+  });
+
+  it("keeps API application credential management out of the Blueprint bootstrap path", () => {
+    const bootstrapSource = readFileSync(join(process.cwd(), "src/scripts/db-bootstrap.ts"), "utf8");
+    const runtimeCredentialSource = readFileSync(join(process.cwd(), "src/scripts/db-runtime-credentials.ts"), "utf8");
+    const bootstrapRuntimeTerraform = readFileSync(
+      join(process.cwd(), "../../infrastructure/terraform/environments/dev/bootstrap-runner.tf"),
+      "utf8",
+    );
+
+    expect(bootstrapRuntimeTerraform).toContain(
+      '${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_API_APP_PASSWORD::',
+    );
+    expect(bootstrapSource).not.toContain('process.env["NEEDSOPS_API_APP_PASSWORD"]');
+    expect(bootstrapSource).not.toContain("needsops_api_app");
+    expect(runtimeCredentialSource).toContain('"NEEDSOPS_API_APP_PASSWORD"');
+    expect(runtimeCredentialSource).not.toContain("seedBuiltInBlueprints");
+    expect(runtimeCredentialSource).not.toContain("seedCatalogueFromRegistry");
+    expect(runtimeCredentialSource).not.toContain("runSeed");
+    expect(runtimeCredentialSource).not.toContain("reconcileWorkforceDnaPublication");
+  });
+
+  it("runs API application credential bootstrap without Blueprint writes or role membership", async () => {
+    const queries: string[] = [];
+    const client = {
+      query: async <T = unknown>(text: string): Promise<{ rows: T[] }> => {
+        queries.push(text);
+        if (text.includes("current_database()")) {
+          return { rows: [{ database_name: "needsops_dev" }] as T[] };
+        }
+        if (text.includes("FROM pg_namespace")) {
+          return { rows: [{ schema_name: "public" }, { schema_name: "org_7f76" }] as T[] };
+        }
+        if (text.includes("rolsuper") && text.includes("memberships")) {
+          return {
+            rows: [{
+              rolsuper: false,
+              rolcreatedb: false,
+              rolcreaterole: false,
+              rolreplication: false,
+              rolbypassrls: false,
+              rolcanlogin: true,
+              rolinherit: false,
+              memberships: "{}",
+            }] as T[],
+          };
+        }
+        return { rows: [] };
+      },
+    };
+
+    const result = await configureApiRuntimeCredential(client, "api-password");
+    const sql = queries.join("\n");
+
+    expect(result.grants).toEqual([
+      "CONNECT ON DATABASE needsops_dev",
+      "USAGE ON SCHEMA public",
+      "SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public",
+      "USAGE ON ALL SEQUENCES IN SCHEMA public",
+      "DEFAULT SELECT, INSERT, UPDATE, DELETE ON TABLES IN SCHEMA public",
+      "DEFAULT USAGE ON SEQUENCES IN SCHEMA public",
+      "USAGE ON SCHEMA org_7f76",
+      "SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA org_7f76",
+      "USAGE ON ALL SEQUENCES IN SCHEMA org_7f76",
+      "DEFAULT SELECT, INSERT, UPDATE, DELETE ON TABLES IN SCHEMA org_7f76",
+      "DEFAULT USAGE ON SEQUENCES IN SCHEMA org_7f76",
+    ]);
+    expect(sql).toContain("CREATE ROLE needsops_api_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT");
+    expect(sql).toContain("NOBYPASSRLS");
+    expect(sql).toContain("REVOKE %I FROM needsops_api_app");
+    expect(sql).toContain('GRANT CONNECT ON DATABASE "needsops_dev" TO needsops_api_app');
+    expect(sql).toContain('GRANT USAGE ON SCHEMA "public" TO needsops_api_app');
+    expect(sql).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "public" TO needsops_api_app');
+    expect(sql).toContain('ALTER DEFAULT PRIVILEGES IN SCHEMA "public" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO needsops_api_app');
+    expect(sql).not.toContain("GRANT ${sqlIdentifier(currentRole)} TO needsops_api_app");
+    expect(sql).not.toMatch(/GRANT\s+needsops_admin\s+TO\s+needsops_api_app/i);
+    expect(sql).not.toContain("seedBuiltInBlueprints");
+    expect(sql).not.toContain("INSERT INTO work_blueprints");
+    expect(sql).not.toContain("UPDATE work_blueprints");
   });
 
   it("runs platform security verification after ordered migrations", () => {

@@ -133,7 +133,6 @@ data "aws_iam_policy_document" "api_execution_secrets" {
     sid     = "ReadRuntimeSecrets"
     actions = ["secretsmanager:GetSecretValue"]
     resources = [
-      aws_db_instance.postgres.master_user_secret[0].secret_arn,
       aws_secretsmanager_secret.app["session"].arn,
       aws_secretsmanager_secret.app["clerk"].arn,
       aws_secretsmanager_secret.app["openai"].arn,
@@ -247,6 +246,10 @@ resource "aws_ecs_task_definition" "api" {
           value = aws_db_instance.postgres.db_name
         },
         {
+          name  = "DB_USERNAME"
+          value = "needsops_api_app"
+        },
+        {
           name  = "DB_PLATFORM_USERNAME"
           value = "needsops_platform_app"
         },
@@ -314,12 +317,8 @@ resource "aws_ecs_task_definition" "api" {
 
       secrets = [
         {
-          name      = "DB_USERNAME"
-          valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:username::"
-        },
-        {
           name      = "DB_PASSWORD"
-          valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
+          valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_API_APP_PASSWORD::"
         },
         {
           name      = "DB_PLATFORM_PASSWORD"

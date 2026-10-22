@@ -8,6 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "db:bootstrap": "tsx src/scripts/db-bootstrap.ts",
+    "db:runtime-credentials": "tsx src/scripts/db-runtime-credentials.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run src/__tests__",
     "check:db-boundaries": "node scripts/check-db-boundaries.mjs",
