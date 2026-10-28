@@ -2307,6 +2307,729 @@ function compareSeededJsonArrayField(
   compareSeededField(mismatches, blueprintCode, sectionCode, field, actual, expected);
 }
 
+export interface ScopedRegistryBlueprintPublisherInput {
+  code: string;
+  dryRun?: boolean;
+  now?: Date;
+}
+
+export interface ScopedBlueprintRestoreArtifact {
+  blueprint: WorkBlueprint;
+  sections: BlueprintSection[];
+}
+
+export interface VerifiedScopedBlueprintRestoreArtifact {
+  computedHash?: string;
+  liveExpectedHash?: string;
+  rollback?: ScopedBlueprintRestoreArtifact;
+  blueprint?: WorkBlueprint;
+  sections?: BlueprintSection[];
+}
+
+export interface ScopedBlueprintRestoreInput {
+  artifact: VerifiedScopedBlueprintRestoreArtifact;
+  code?: string;
+  dryRun?: boolean;
+  now?: Date;
+}
+
+export interface ScopedRegistryBlueprintPublisherDiff {
+  blueprint: Record<string, { current: unknown; next: unknown }>;
+  sections: Array<{
+    sectionCode: string;
+    id: string;
+    action: "insert" | "update" | "delete" | "unchanged";
+    current: Record<string, unknown> | null;
+    next: Record<string, unknown> | null;
+    changes: Record<string, { current: unknown; next: unknown }>;
+  }>;
+}
+
+export interface ScopedRegistryBlueprintPublisherResult {
+  code: string;
+  blueprintId: string;
+  dryRun: boolean;
+  wrote: boolean;
+  currentContentHash: string | null;
+  nextContentHash: string;
+  diff: ScopedRegistryBlueprintPublisherDiff;
+}
+
+export type ScopedBlueprintRestoreResult = ScopedRegistryBlueprintPublisherResult & {
+  restoredFromHash: string;
+};
+
+function registrySectionId(code: string, sectionCode: string): string {
+  return `platform_blueprint_${code}_section_${sectionCode.toLowerCase()}`;
+}
+
+function sectionToWritableValues(section: RegistryEntry["sections"][number], blueprintId: string, now: Date) {
+  return {
+    blueprintId,
+    sectionCode: section.sectionCode,
+    title: section.title,
+    description: section.description,
+    instructions: section.instructions,
+    sectionRole: section.sectionRole ?? null,
+    fixedContent: section.fixedContent ?? [],
+    templateFields: section.fields ?? [],
+    completionPrompt: section.completionPrompt ?? null,
+    required: section.required,
+    minimumContentExpectation: section.minimumContentExpectation,
+    evidenceRequirements: section.evidenceRequirements ?? {},
+    allowedSourceTypes: section.allowedSourceTypes ?? [],
+    prohibitedAssumptions: section.prohibitedAssumptions ?? [],
+    validationRules: section.validationRules ?? [],
+    qualityCriteria: section.qualityCriteria ?? [],
+    sortOrder: section.sortOrder,
+    updatedAt: now,
+  };
+}
+
+function sectionRestoreValues(section: BlueprintSection, blueprintId: string, now: Date) {
+  return {
+    blueprintId,
+    sectionCode: section.sectionCode,
+    title: section.title,
+    description: section.description,
+    instructions: section.instructions,
+    sectionRole: section.sectionRole ?? null,
+    fixedContent: section.fixedContent ?? [],
+    templateFields: section.fields ?? [],
+    completionPrompt: section.completionPrompt ?? null,
+    required: section.required,
+    minimumContentExpectation: section.minimumContentExpectation,
+    evidenceRequirements: section.evidenceRequirements ?? {},
+    allowedSourceTypes: section.allowedSourceTypes ?? [],
+    prohibitedAssumptions: section.prohibitedAssumptions ?? [],
+    validationRules: section.validationRules ?? [],
+    qualityCriteria: section.qualityCriteria ?? [],
+    sortOrder: section.sortOrder,
+    updatedAt: now,
+  };
+}
+
+function sectionWritableValuesToBlueprintSection(
+  id: string,
+  values: ReturnType<typeof sectionToWritableValues>,
+  createdAt: Date,
+): BlueprintSection {
+  return {
+    id,
+    blueprintId: values.blueprintId,
+    sectionCode: values.sectionCode,
+    title: values.title,
+    description: values.description ?? null,
+    instructions: values.instructions ?? null,
+    sectionRole: values.sectionRole ?? null,
+    fixedContent: values.fixedContent ?? [],
+    fields: values.templateFields ?? [],
+    completionPrompt: values.completionPrompt ?? null,
+    required: values.required,
+    minimumContentExpectation: values.minimumContentExpectation ?? null,
+    evidenceRequirements: values.evidenceRequirements ?? {},
+    allowedSourceTypes: values.allowedSourceTypes ?? [],
+    prohibitedAssumptions: values.prohibitedAssumptions ?? [],
+    validationRules: values.validationRules ?? [],
+    qualityCriteria: values.qualityCriteria ?? [],
+    sortOrder: values.sortOrder,
+    createdAt,
+    updatedAt: values.updatedAt,
+  };
+}
+
+function sectionRestoreValuesToBlueprintSection(
+  id: string,
+  values: ReturnType<typeof sectionRestoreValues>,
+  createdAt: Date,
+): BlueprintSection {
+  return {
+    id,
+    blueprintId: values.blueprintId,
+    sectionCode: values.sectionCode,
+    title: values.title,
+    description: values.description ?? null,
+    instructions: values.instructions ?? null,
+    sectionRole: values.sectionRole ?? null,
+    fixedContent: values.fixedContent ?? [],
+    fields: values.templateFields ?? [],
+    completionPrompt: values.completionPrompt ?? null,
+    required: values.required,
+    minimumContentExpectation: values.minimumContentExpectation ?? null,
+    evidenceRequirements: values.evidenceRequirements ?? {},
+    allowedSourceTypes: values.allowedSourceTypes ?? [],
+    prohibitedAssumptions: values.prohibitedAssumptions ?? [],
+    validationRules: values.validationRules ?? [],
+    qualityCriteria: values.qualityCriteria ?? [],
+    sortOrder: values.sortOrder,
+    createdAt,
+    updatedAt: values.updatedAt,
+  };
+}
+
+function blueprintRestoreValues(blueprint: WorkBlueprint, contentHash: string, now: Date): Partial<WorkBlueprint> {
+  return {
+    title: blueprint.title,
+    version: blueprint.version,
+    contentHash,
+    blueprintFamily: blueprint.blueprintFamily,
+    supportedModes: blueprint.supportedModes,
+    maturityState: blueprint.maturityState,
+    ownerType: blueprint.ownerType,
+    purpose: blueprint.purpose,
+    primaryDeliverable: blueprint.primaryDeliverable,
+    deliverableContract: blueprint.deliverableContract,
+    evidenceContract: blueprint.evidenceContract,
+    permittedOrgOverrides: blueprint.permittedOrgOverrides,
+    defaultTemplateId: blueprint.defaultTemplateId,
+    templateRequired: blueprint.templateRequired,
+    allowedOrgTemplateOverride: blueprint.allowedOrgTemplateOverride,
+    templateVersionPolicy: blueprint.templateVersionPolicy,
+    status: blueprint.status,
+    objective: blueprint.objective,
+    primarySpecialist: blueprint.primarySpecialist,
+    supportingSpecialists: blueprint.supportingSpecialists,
+    requiredLibraryKnowledge: blueprint.requiredLibraryKnowledge,
+    requiredEntityKnowledge: blueprint.requiredEntityKnowledge,
+    requiredMemories: blueprint.requiredMemories,
+    requiredApprovals: blueprint.requiredApprovals,
+    validationRules: blueprint.validationRules,
+    qualityRules: blueprint.qualityRules,
+    successCriteria: blueprint.successCriteria,
+    outputTypes: blueprint.outputTypes,
+    escalationRules: blueprint.escalationRules,
+    mandatoryCitations: blueprint.mandatoryCitations,
+    isBuiltIn: blueprint.isBuiltIn,
+    isActive: blueprint.isActive,
+    updatedAt: now,
+  };
+}
+
+function asDate(value: unknown): Date {
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.valueOf())) return parsed;
+  }
+  return new Date(0);
+}
+
+function normaliseRestoreBlueprint(input: WorkBlueprint): WorkBlueprint {
+  return {
+    ...input,
+    organizationId: input.organizationId ?? null,
+    contentHash: input.contentHash ?? null,
+    blueprintFamily: input.blueprintFamily ?? null,
+    supportedModes: input.supportedModes ?? [],
+    purpose: input.purpose ?? null,
+    primaryDeliverable: input.primaryDeliverable ?? null,
+    deliverableContract: input.deliverableContract ?? null,
+    evidenceContract: input.evidenceContract ?? null,
+    permittedOrgOverrides: input.permittedOrgOverrides ?? {},
+    defaultTemplateId: input.defaultTemplateId ?? null,
+    requiredEntityKnowledge: input.requiredEntityKnowledge ?? {},
+    requiredApprovals: input.requiredApprovals ?? {},
+    validationRules: input.validationRules ?? [],
+    qualityRules: input.qualityRules ?? [],
+    successCriteria: input.successCriteria ?? [],
+    outputTypes: input.outputTypes ?? [],
+    escalationRules: input.escalationRules ?? [],
+    mandatoryCitations: input.mandatoryCitations ?? [],
+    createdAt: asDate(input.createdAt),
+    updatedAt: asDate(input.updatedAt),
+  };
+}
+
+function normaliseRestoreSection(input: BlueprintSection, blueprintId: string): BlueprintSection {
+  return {
+    ...input,
+    blueprintId,
+    description: input.description ?? null,
+    instructions: input.instructions ?? null,
+    sectionRole: input.sectionRole ?? null,
+    fixedContent: input.fixedContent ?? [],
+    fields: input.fields ?? [],
+    completionPrompt: input.completionPrompt ?? null,
+    minimumContentExpectation: input.minimumContentExpectation ?? null,
+    evidenceRequirements: input.evidenceRequirements ?? {},
+    allowedSourceTypes: input.allowedSourceTypes ?? [],
+    prohibitedAssumptions: input.prohibitedAssumptions ?? [],
+    validationRules: input.validationRules ?? [],
+    qualityCriteria: input.qualityCriteria ?? [],
+    createdAt: asDate(input.createdAt),
+    updatedAt: asDate(input.updatedAt),
+  };
+}
+
+export function readVerifiedScopedBlueprintRestoreArtifact(
+  artifact: VerifiedScopedBlueprintRestoreArtifact,
+): { blueprint: WorkBlueprint; sections: BlueprintSection[]; computedHash: string; recordedHash: string } {
+  const payload = artifact.rollback ?? (
+    artifact.blueprint && artifact.sections ? { blueprint: artifact.blueprint, sections: artifact.sections } : null
+  );
+  if (!payload?.blueprint || !Array.isArray(payload.sections)) {
+    throw new Error("Restore artifact must contain rollback.blueprint and rollback.sections");
+  }
+
+  const blueprint = normaliseRestoreBlueprint(payload.blueprint);
+  const sections = payload.sections.map((section) => normaliseRestoreSection(section, blueprint.id));
+  for (const section of sections) {
+    if (section.blueprintId !== blueprint.id) {
+      throw new Error(`Restore artifact section ${section.id} belongs to unexpected blueprint ${section.blueprintId}`);
+    }
+  }
+
+  const computedHash = computeBlueprintContentHash({ blueprint, sections });
+  const recordedHash = artifact.computedHash ?? artifact.liveExpectedHash ?? blueprint.contentHash ?? "";
+  if (!recordedHash) {
+    throw new Error("Restore artifact does not record a content hash");
+  }
+  if (computedHash !== recordedHash) {
+    throw new Error(`Restore artifact hash mismatch: recorded ${recordedHash}, computed ${computedHash}`);
+  }
+  if (blueprint.contentHash && blueprint.contentHash !== computedHash) {
+    throw new Error(`Restore artifact blueprint hash mismatch: blueprint ${blueprint.contentHash}, computed ${computedHash}`);
+  }
+
+  return {
+    blueprint: { ...blueprint, contentHash: computedHash },
+    sections,
+    computedHash,
+    recordedHash,
+  };
+}
+
+export function buildScopedBlueprintRestorePlan(input: {
+  currentBlueprint: WorkBlueprint;
+  currentSections: BlueprintSection[];
+  artifact: VerifiedScopedBlueprintRestoreArtifact;
+  code?: string;
+  now?: Date;
+}): {
+  code: string;
+  blueprintId: string;
+  currentContentHash: string | null;
+  nextContentHash: string;
+  nextBlueprint: WorkBlueprint;
+  nextSections: BlueprintSection[];
+  diff: ScopedRegistryBlueprintPublisherDiff;
+} {
+  const restore = readVerifiedScopedBlueprintRestoreArtifact(input.artifact);
+  const requestedCode = input.code?.trim();
+  if (requestedCode && requestedCode !== restore.blueprint.code) {
+    throw new Error(`Restore artifact is for ${restore.blueprint.code}, not ${requestedCode}`);
+  }
+  if (input.currentBlueprint.id !== restore.blueprint.id) {
+    throw new Error(`Restore artifact blueprint id ${restore.blueprint.id} does not match live row ${input.currentBlueprint.id}`);
+  }
+  if (input.currentBlueprint.code !== restore.blueprint.code) {
+    throw new Error(`Restore artifact blueprint code ${restore.blueprint.code} does not match live row ${input.currentBlueprint.code}`);
+  }
+  if ((input.currentBlueprint.organizationId ?? null) !== (restore.blueprint.organizationId ?? null)) {
+    throw new Error("Restore artifact organization scope does not match live row");
+  }
+
+  const now = input.now ?? new Date();
+  const nextBlueprint: WorkBlueprint = {
+    ...input.currentBlueprint,
+    ...restore.blueprint,
+    contentHash: restore.computedHash,
+    updatedAt: now,
+  };
+  const currentSectionById = new Map(input.currentSections.map((section) => [section.id, section]));
+  const nextSections = restore.sections.map((section) => sectionRestoreValuesToBlueprintSection(
+    section.id,
+    sectionRestoreValues(section, restore.blueprint.id, now),
+    currentSectionById.get(section.id)?.createdAt ?? section.createdAt,
+  ));
+
+  return {
+    code: restore.blueprint.code,
+    blueprintId: restore.blueprint.id,
+    currentContentHash: input.currentBlueprint.contentHash ?? null,
+    nextContentHash: restore.computedHash,
+    nextBlueprint,
+    nextSections,
+    diff: buildScopedRegistryBlueprintDiff(input.currentBlueprint, nextBlueprint, input.currentSections, nextSections),
+  };
+}
+
+export function buildScopedRegistryBlueprintPublishPlan(input: {
+  currentBlueprint: WorkBlueprint;
+  currentSections: BlueprintSection[];
+  entry: RegistryEntry;
+  now?: Date;
+}): {
+  code: string;
+  blueprintId: string;
+  expectedSectionIds: string[];
+  currentContentHash: string | null;
+  nextContentHash: string;
+  nextBlueprint: WorkBlueprint;
+  nextSections: BlueprintSection[];
+  diff: ScopedRegistryBlueprintPublisherDiff;
+} {
+  const now = input.now ?? new Date();
+  const expectedSectionIds = (input.entry.sections ?? []).map((section) => registrySectionId(input.entry.code, section.sectionCode));
+  const currentSectionById = new Map(input.currentSections.map((section) => [section.id, section]));
+  const nextSections = (input.entry.sections ?? []).map((section) => {
+    const id = registrySectionId(input.entry.code, section.sectionCode);
+    const values = sectionToWritableValues(section, input.currentBlueprint.id, now);
+    return sectionWritableValuesToBlueprintSection(id, values, currentSectionById.get(id)?.createdAt ?? now);
+  });
+
+  const targetValues = blueprintTargetValues(input.entry, input.currentBlueprint, now);
+  const nextBlueprintWithoutHash: WorkBlueprint = {
+    ...input.currentBlueprint,
+    ...targetValues,
+    contentHash: null,
+  };
+  const nextContentHash = computeBlueprintContentHash({
+    blueprint: nextBlueprintWithoutHash,
+    sections: nextSections,
+  });
+  const nextBlueprint: WorkBlueprint = {
+    ...nextBlueprintWithoutHash,
+    contentHash: nextContentHash,
+  };
+
+  return {
+    code: input.entry.code,
+    blueprintId: input.currentBlueprint.id,
+    expectedSectionIds,
+    currentContentHash: input.currentBlueprint.contentHash ?? null,
+    nextContentHash,
+    nextBlueprint,
+    nextSections,
+    diff: buildScopedRegistryBlueprintDiff(input.currentBlueprint, nextBlueprint, input.currentSections, nextSections),
+  };
+}
+
+function blueprintTargetValues(entry: RegistryEntry, current: WorkBlueprint, now: Date): Partial<WorkBlueprint> {
+  const registryOwner = getRegistryBlueprintSeedOwner(entry);
+  const isRegistryPlaceholderRow = current.objective.startsWith("[PLACEHOLDER]");
+  const shouldApplyRegistryContract = isRegistryPlaceholderRow || entry.maturityState === "production_ready";
+  return {
+    title: entry.title,
+    blueprintFamily: entry.blueprintFamily,
+    supportedModes: entry.supportedModes,
+    maturityState: entry.maturityState,
+    ownerType: "platform_owned",
+    purpose: entry.purpose,
+    primaryDeliverable: entry.primaryDeliverable,
+    permittedOrgOverrides: {},
+    ...(shouldApplyRegistryContract ? registryContractSeedValues(entry, registryOwner) : {}),
+    updatedAt: now,
+  };
+}
+
+function normaliseDiffValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
+function diffRecords(
+  current: Record<string, unknown> | null,
+  next: Record<string, unknown> | null,
+): Record<string, { current: unknown; next: unknown }> {
+  const keys = new Set([...Object.keys(current ?? {}), ...Object.keys(next ?? {})]);
+  const changes: Record<string, { current: unknown; next: unknown }> = {};
+  for (const key of [...keys].sort()) {
+    const currentValue = normaliseDiffValue(current?.[key]);
+    const nextValue = normaliseDiffValue(next?.[key]);
+    if (JSON.stringify(currentValue) !== JSON.stringify(nextValue)) {
+      changes[key] = { current: currentValue, next: nextValue };
+    }
+  }
+  return changes;
+}
+
+function blueprintDiffFields(blueprint: WorkBlueprint): Record<string, unknown> {
+  return {
+    title: blueprint.title,
+    blueprintFamily: blueprint.blueprintFamily,
+    supportedModes: blueprint.supportedModes,
+    maturityState: blueprint.maturityState,
+    ownerType: blueprint.ownerType,
+    purpose: blueprint.purpose,
+    primaryDeliverable: blueprint.primaryDeliverable,
+    deliverableContract: blueprint.deliverableContract,
+    evidenceContract: blueprint.evidenceContract,
+    permittedOrgOverrides: blueprint.permittedOrgOverrides,
+    defaultTemplateId: blueprint.defaultTemplateId,
+    templateRequired: blueprint.templateRequired,
+    allowedOrgTemplateOverride: blueprint.allowedOrgTemplateOverride,
+    templateVersionPolicy: blueprint.templateVersionPolicy,
+    primarySpecialist: blueprint.primarySpecialist,
+    supportingSpecialists: blueprint.supportingSpecialists,
+    requiredLibraryKnowledge: blueprint.requiredLibraryKnowledge,
+    requiredEntityKnowledge: blueprint.requiredEntityKnowledge,
+    requiredApprovals: blueprint.requiredApprovals,
+    validationRules: blueprint.validationRules,
+    qualityRules: blueprint.qualityRules,
+    successCriteria: blueprint.successCriteria,
+    outputTypes: blueprint.outputTypes,
+    escalationRules: blueprint.escalationRules,
+    mandatoryCitations: blueprint.mandatoryCitations,
+    contentHash: blueprint.contentHash ?? null,
+  };
+}
+
+function sectionDiffFields(section: BlueprintSection): Record<string, unknown> {
+  return {
+    title: section.title,
+    description: section.description,
+    instructions: section.instructions,
+    sectionRole: section.sectionRole,
+    fixedContent: section.fixedContent,
+    fields: section.fields,
+    completionPrompt: section.completionPrompt,
+    required: section.required,
+    minimumContentExpectation: section.minimumContentExpectation,
+    evidenceRequirements: section.evidenceRequirements,
+    allowedSourceTypes: section.allowedSourceTypes,
+    prohibitedAssumptions: section.prohibitedAssumptions,
+    validationRules: section.validationRules,
+    qualityCriteria: section.qualityCriteria,
+    sortOrder: section.sortOrder,
+  };
+}
+
+function buildScopedRegistryBlueprintDiff(
+  currentBlueprint: WorkBlueprint,
+  nextBlueprint: WorkBlueprint,
+  currentSections: BlueprintSection[],
+  nextSections: BlueprintSection[],
+): ScopedRegistryBlueprintPublisherDiff {
+  const currentById = new Map(currentSections.map((section) => [section.id, section]));
+  const nextById = new Map(nextSections.map((section) => [section.id, section]));
+  const sectionIds = new Set([...currentById.keys(), ...nextById.keys()]);
+  const sections = [...sectionIds].sort().map((id) => {
+    const current = currentById.get(id) ?? null;
+    const next = nextById.get(id) ?? null;
+    const changes = diffRecords(
+      current ? sectionDiffFields(current) : null,
+      next ? sectionDiffFields(next) : null,
+    );
+    return {
+      id,
+      sectionCode: next?.sectionCode ?? current?.sectionCode ?? id,
+      action: !current && next ? "insert" as const
+        : current && !next ? "delete" as const
+          : Object.keys(changes).length > 0 ? "update" as const
+            : "unchanged" as const,
+      current: current ? sectionDiffFields(current) : null,
+      next: next ? sectionDiffFields(next) : null,
+      changes,
+    };
+  });
+
+  return {
+    blueprint: diffRecords(blueprintDiffFields(currentBlueprint), blueprintDiffFields(nextBlueprint)),
+    sections,
+  };
+}
+
+export async function publishScopedRegistryBlueprint(
+  input: ScopedRegistryBlueprintPublisherInput,
+): Promise<ScopedRegistryBlueprintPublisherResult> {
+  const canonicalCode = resolveRegistryCodeForNewWork(input.code);
+  const entry = getRegistryEntry(canonicalCode);
+  if (!entry) {
+    throw new Error(`Registry blueprint not found for code: ${input.code}`);
+  }
+
+  const now = input.now ?? new Date();
+  const dryRun = input.dryRun !== false;
+  const rows = await db
+    .select()
+    .from(workBlueprintsTable)
+    .where(and(
+      eq(workBlueprintsTable.code, entry.code),
+      isNull(workBlueprintsTable.organizationId),
+    ))
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw new Error(`Platform blueprint row not found for code: ${entry.code}`);
+  }
+
+  const currentBlueprint = mapRow(row);
+  const currentSections = await getBlueprintSections(currentBlueprint.id);
+  const plan = buildScopedRegistryBlueprintPublishPlan({ currentBlueprint, currentSections, entry, now });
+
+  if (dryRun) {
+    return {
+      code: entry.code,
+      blueprintId: currentBlueprint.id,
+      dryRun: true,
+      wrote: false,
+      currentContentHash: currentBlueprint.contentHash ?? null,
+      nextContentHash: plan.nextContentHash,
+      diff: plan.diff,
+    };
+  }
+
+  await db
+    .update(workBlueprintsTable)
+    .set({
+      ...blueprintTargetValues(entry, currentBlueprint, now),
+      contentHash: plan.nextContentHash,
+    })
+    .where(eq(workBlueprintsTable.id, currentBlueprint.id));
+
+  if (plan.expectedSectionIds.length === 0) {
+    await db
+      .delete(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.blueprintId, currentBlueprint.id));
+  } else {
+    await db
+      .delete(blueprintSectionsTable)
+      .where(and(
+        eq(blueprintSectionsTable.blueprintId, currentBlueprint.id),
+        notInArray(blueprintSectionsTable.id, plan.expectedSectionIds),
+      ));
+  }
+
+  for (const section of entry.sections ?? []) {
+    const id = registrySectionId(entry.code, section.sectionCode);
+    const values = sectionToWritableValues(section, currentBlueprint.id, now);
+    const existing = await db
+      .select({ id: blueprintSectionsTable.id })
+      .from(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.id, id))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(blueprintSectionsTable)
+        .set(values)
+        .where(eq(blueprintSectionsTable.id, id));
+    } else {
+      await db.insert(blueprintSectionsTable).values({
+        id,
+        ...values,
+        createdAt: now,
+      });
+    }
+  }
+
+  await verifySeededRegistryBlueprintSections(entry, currentBlueprint.id, plan.expectedSectionIds);
+
+  return {
+    code: entry.code,
+    blueprintId: currentBlueprint.id,
+    dryRun: false,
+    wrote: true,
+    currentContentHash: currentBlueprint.contentHash ?? null,
+    nextContentHash: plan.nextContentHash,
+    diff: plan.diff,
+  };
+}
+
+export async function restoreScopedBlueprintFromVerifiedArtifact(
+  input: ScopedBlueprintRestoreInput,
+): Promise<ScopedBlueprintRestoreResult> {
+  const artifact = readVerifiedScopedBlueprintRestoreArtifact(input.artifact);
+  const requestedCode = input.code?.trim();
+  if (requestedCode && requestedCode !== artifact.blueprint.code) {
+    throw new Error(`Restore artifact is for ${artifact.blueprint.code}, not ${requestedCode}`);
+  }
+
+  const now = input.now ?? new Date();
+  const dryRun = input.dryRun !== false;
+  const rows = await db
+    .select()
+    .from(workBlueprintsTable)
+    .where(and(
+      eq(workBlueprintsTable.id, artifact.blueprint.id),
+      eq(workBlueprintsTable.code, artifact.blueprint.code),
+      artifact.blueprint.organizationId === null
+        ? isNull(workBlueprintsTable.organizationId)
+        : eq(workBlueprintsTable.organizationId, artifact.blueprint.organizationId),
+    ))
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw new Error(`Blueprint row not found for restore artifact: ${artifact.blueprint.code} (${artifact.blueprint.id})`);
+  }
+
+  const currentBlueprint = mapRow(row);
+  const currentSections = await getBlueprintSections(currentBlueprint.id);
+  const plan = buildScopedBlueprintRestorePlan({
+    currentBlueprint,
+    currentSections,
+    artifact: input.artifact,
+    code: requestedCode,
+    now,
+  });
+
+  if (dryRun) {
+    return {
+      code: plan.code,
+      blueprintId: plan.blueprintId,
+      dryRun: true,
+      wrote: false,
+      currentContentHash: plan.currentContentHash,
+      nextContentHash: plan.nextContentHash,
+      restoredFromHash: artifact.computedHash,
+      diff: plan.diff,
+    };
+  }
+
+  await db
+    .update(workBlueprintsTable)
+    .set(blueprintRestoreValues(artifact.blueprint, artifact.computedHash, now))
+    .where(eq(workBlueprintsTable.id, artifact.blueprint.id));
+
+  const restoreSectionIds = artifact.sections.map((section) => section.id);
+  if (restoreSectionIds.length === 0) {
+    await db
+      .delete(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.blueprintId, artifact.blueprint.id));
+  } else {
+    await db
+      .delete(blueprintSectionsTable)
+      .where(and(
+        eq(blueprintSectionsTable.blueprintId, artifact.blueprint.id),
+        notInArray(blueprintSectionsTable.id, restoreSectionIds),
+      ));
+  }
+
+  for (const section of artifact.sections) {
+    const values = sectionRestoreValues(section, artifact.blueprint.id, now);
+    const existing = await db
+      .select({ id: blueprintSectionsTable.id })
+      .from(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.id, section.id))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(blueprintSectionsTable)
+        .set(values)
+        .where(eq(blueprintSectionsTable.id, section.id));
+    } else {
+      await db.insert(blueprintSectionsTable).values({
+        id: section.id,
+        ...values,
+        createdAt: section.createdAt,
+      });
+    }
+  }
+
+  return {
+    code: plan.code,
+    blueprintId: plan.blueprintId,
+    dryRun: false,
+    wrote: true,
+    currentContentHash: plan.currentContentHash,
+    nextContentHash: plan.nextContentHash,
+    restoredFromHash: artifact.computedHash,
+    diff: plan.diff,
+  };
+}
+
 /**
  * Seed broad deterministic intent mappings from the registry-backed intent map
  * into OpenClaw's DB-backed override architecture.

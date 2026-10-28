@@ -57,6 +57,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/scripts/db-runtime-credentials.ts"),
       path.resolve(artifactDir, "src/scripts/process-pending-curation.ts"),
       path.resolve(artifactDir, "src/scripts/run-care-plan-task.ts"),
+      path.resolve(artifactDir, "src/scripts/scoped-blueprint-publisher.ts"),
       path.resolve(artifactDir, "src/scripts/reconcile-workforce-dna-publication.ts"),
     ],
     platform: "node",
