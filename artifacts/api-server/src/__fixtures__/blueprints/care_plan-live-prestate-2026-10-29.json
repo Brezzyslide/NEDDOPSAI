@@ -1,0 +1,1653 @@
+{
+  "blueprint": {
+    "allowed_org_template_override": true,
+    "blueprint_family": "care_plan",
+    "code": "care_plan",
+    "content_hash": "sha256:b825528b9a95744f2bf265108e9aec998e7c3b76bbf4d3bb3522ef3af97dadd2",
+    "created_at": "2026-08-21T10:09:50.664+00:00",
+    "default_template_id": null,
+    "deliverable_contract": {
+      "allowedInternalAnalysis": [
+        "source_document_reconciliation"
+      ],
+      "artifactRequired": true,
+      "completionRequirements": [
+        "all_fourteen_sections_present",
+        "conditional_sections_content_or_explicit_non_applicability",
+        "authored_adequacy_criteria_satisfied",
+        "mechanical_gate_rules_pass",
+        "artifact_generated"
+      ],
+      "namingConvention": "CARE_PLAN_{participant}_{date}",
+      "primaryDeliverable": "care_plan",
+      "primaryFormat": "docx",
+      "prohibitedDeliverables": [
+        "health_support_plan",
+        "behaviour_support_plan",
+        "standalone_risk_assessment",
+        "restrictive_practice_authorisation"
+      ],
+      "requirementPlan": [
+        {
+          "adequacyCriteria": [
+            "Every field present and labelled",
+            "People present names people who attended the planning meeting. A document title in that field is a defect",
+            "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+            "Date for Review is a real date, later than the plan date",
+            "Diagnosis is transcribed from a clinical source, never inferred"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "completionFields": [
+            "Plan date",
+            "Date for review"
+          ],
+          "id": "care-plan-support-plan-meeting",
+          "requirementText": "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
+          "sectionCode": "SUPPORT_PLAN_MEETING",
+          "targetLocation": "Support Plan Meeting (header)"
+        },
+        {
+          "adequacyCriteria": [
+            "Minimum three personal goals present",
+            "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
+            "Current situation is specific to this participant, not generic",
+            "Goal states what the participant will do or achieve",
+            "Actions state what will be done to support the goal",
+            "Person responsible names a role or person. \"The team\" is a defect",
+            "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
+            "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions \u2014 never invented independently of them"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-goals",
+          "requirementText": "Goals section contains a table per objective with current situation, goal, actions, person responsible, timeframe, and outcomes.",
+          "sectionCode": "GOALS",
+          "targetLocation": "Goals"
+        },
+        {
+          "adequacyCriteria": [
+            "Strengths stated",
+            "Likes and dislikes stated",
+            "Informal supports identified",
+            "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+            "Written about the person, not about their deficits"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-about-me",
+          "requirementText": "About Me section contains the person \u2014 strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
+          "sectionCode": "ABOUT_ME",
+          "targetLocation": "About Me"
+        },
+        {
+          "adequacyCriteria": [
+            "Carries only what a support worker operationally needs. Not the full file",
+            "Every historical claim traceable to a named source document",
+            "No clinical interpretation added beyond what the source states",
+            "[OPEN] Should this section state an access restriction, given its content?"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-history-background",
+          "requirementText": "History and Background section contains background a support worker operationally needs \u2014 relevant history, prior service involvement, and risk-relevant context.",
+          "sectionCode": "HISTORY_BACKGROUND",
+          "targetLocation": "History and Background"
+        },
+        {
+          "adequacyCriteria": [
+            "States what the participant does independently",
+            "States what needs prompting",
+            "States what needs hands-on support",
+            "A capacity statement with no support description is inadequate"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-undertaking-adl",
+          "requirementText": "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
+          "sectionCode": "UNDERTAKING_ADL",
+          "targetLocation": "Undertaking ADL"
+        },
+        {
+          "adequacyCriteria": [
+            "Capacity indicators completed",
+            "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
+            "Strategy states what a worker should actually do",
+            "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-communication-strategy",
+          "requirementText": "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+          "sectionCode": "COMMUNICATION_STRATEGY",
+          "targetLocation": "Communication and Communication Strategy"
+        },
+        {
+          "adequacyCriteria": [
+            "Capacity indicator completed",
+            "Strategy narrative present, not checkbox alone",
+            "Where an aid is used, it is named and its use described"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-mobility-strategy",
+          "requirementText": "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
+          "sectionCode": "MOBILITY_STRATEGY",
+          "targetLocation": "Mobility and Mobility Strategy"
+        },
+        {
+          "adequacyCriteria": [
+            "Every selected support type has a corresponding description. Selected-with-no- description is a hard fail",
+            "Descriptions state what the worker does, not what the support is called",
+            "Selected supports reconcile against funded supports in the service agreement"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "completionFields": [
+            "On-call contact",
+            "Service manager contact"
+          ],
+          "id": "care-plan-support-delivery-client-safety",
+          "requirementText": "Support Delivery and Client Safety section contains support type checklist \u2014 in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning \u2014 plus description of support.",
+          "sectionCode": "SUPPORT_DELIVERY_CLIENT_SAFETY",
+          "targetLocation": "Support Delivery and Client Safety"
+        },
+        {
+          "adequacyCriteria": [
+            "Template mode includes all three fold headings and their four-column tables",
+            "Participant-specific mode: every rendered strategy has a non-empty, specific BSP source containing the quoted passage and location",
+            "Participant-specific mode: distinct strategies extracted from the BSP equal distinct strategies rendered across the three folds",
+            "Participant-specific mode: no strategy flagged by the restrictive practice cross-check appears unless it is on the authorised Restrictive Practices list",
+            "Participant-specific mode: protective strategies are APO confirmed before approval",
+            "No strategy exists that cannot be traced to a BSP passage"
+          ],
+          "classification": "CONDITIONAL",
+          "conditionalApplicability": {
+            "appliesWhen": [
+              "BSP exists",
+              "behaviours of concern are recorded",
+              "any goal references behaviour"
+            ],
+            "nonApplicability": "Where none apply, state non-applicability per 3.1."
+          },
+          "id": "care-plan-behavioural-management",
+          "requirementText": "Behavioural Management section contains three BSP-derived strategy folds: Proactive strategies, Reactive strategies and Protective strategies, each with behaviour or trigger, strategy, worker action and BSP source.",
+          "sectionCode": "BEHAVIOURAL_MANAGEMENT",
+          "targetLocation": "Behavioural Management"
+        },
+        {
+          "adequacyCriteria": [
+            "Template mode includes the Restrictive Practices table with all six columns",
+            "Participant-specific mode: every restrictive practice row has an authorisation status and reference",
+            "Each practice is named in plain language a support worker understands",
+            "Each row states what the worker does, what the worker must not do and the recording requirement",
+            "Authorisation status is stated as recorded in the BSP or authorisation source, never determined here"
+          ],
+          "classification": "CONDITIONAL",
+          "conditionalApplicability": {
+            "appliesWhen": [
+              "any restrictive practice is in place"
+            ],
+            "nonApplicability": "Where none, state non-applicability per 3.1."
+          },
+          "id": "care-plan-restrictive-practices",
+          "requirementText": "Restrictive Practices section contains a six-column table for practice type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement.",
+          "sectionCode": "RESTRICTIVE_PRACTICES",
+          "targetLocation": "Restrictive Practices"
+        },
+        {
+          "adequacyCriteria": [
+            "Strategy drawn from the mealtime management risk assessment, cited",
+            "Where a mealtime management risk assessment is absent, states that the assessment is not recorded in the retrieved evidence and does not invent an assessment date",
+            "Where no hands-on strategy is recorded as required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+            "Written as worker actions"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "id": "care-plan-mealtime-management-strategy",
+          "requirementText": "Mealtime Management Strategy section contains the mealtime strategy a support worker executes.",
+          "sectionCode": "MEALTIME_MANAGEMENT_STRATEGY",
+          "targetLocation": "Mealtime Management Strategy"
+        },
+        {
+          "adequacyCriteria": [
+            "States participant-specific arrangements, not a reproduction of the site plan",
+            "Names the source risk assessment",
+            "For community access, addresses both general and location-specific risk",
+            "Written as worker actions",
+            "[OPEN] Other settings: confirm"
+          ],
+          "classification": "CONDITIONAL",
+          "conditionalApplicability": {
+            "appliesWhen": [
+              "SIL and supported accommodation",
+              "community access participants"
+            ],
+            "nonApplicability": "Other settings: [OPEN] \u2014 confirm"
+          },
+          "id": "care-plan-disaster-management-strategy",
+          "requirementText": "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
+          "sectionCode": "DISASTER_MANAGEMENT_STRATEGY",
+          "targetLocation": "Disaster Management Strategy"
+        },
+        {
+          "adequacyCriteria": [
+            "Block present and complete-able",
+            "Where the plan is provided to family or carer, consent is recorded",
+            "The system never fabricates a signature or a consent state"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "completionFields": [
+            "Signature",
+            "Date",
+            "Provided to",
+            "Consent"
+          ],
+          "id": "care-plan-client-endorsement",
+          "requirementText": "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
+          "sectionCode": "CLIENT_ENDORSEMENT",
+          "targetLocation": "Client Endorsement"
+        },
+        {
+          "adequacyCriteria": [
+            "form ID, version and date present; review date consistent with 4.1"
+          ],
+          "classification": "MUST_BE_REPRESENTED",
+          "completionFields": [
+            "Form ID",
+            "Date"
+          ],
+          "id": "care-plan-document-control",
+          "requirementText": "Document Control section contains form ID, version, date, and \"uncontrolled when printed\" statement.",
+          "sectionCode": "DOCUMENT_CONTROL",
+          "targetLocation": "Document Control"
+        }
+      ],
+      "secondaryDeliverables": [
+        "pdf"
+      ],
+      "secondaryFormats": [
+        "pdf"
+      ],
+      "templateRequired": true
+    },
+    "escalation_rules": [
+      {
+        "action": "defer_to_external_or_credentialed_health_professional",
+        "trigger": "clinical_judgement_required"
+      },
+      {
+        "action": "defer_to_behaviour_support_implementation_specialist",
+        "trigger": "bsp_implementation_required"
+      },
+      {
+        "action": "defer_to_authorised_program_officer",
+        "trigger": "restrictive_practice_governance_required"
+      },
+      {
+        "action": "defer_to_incident_safeguarding_specialist",
+        "trigger": "safeguarding_or_incident_risk"
+      }
+    ],
+    "evidence_contract": {
+      "allowedSourceTypes": [
+        "participant_document",
+        "participant_record",
+        "ndis_plan",
+        "strengths_based_questionnaire",
+        "intake_form",
+        "service_agreement",
+        "behaviour_support_plan",
+        "allied_health_report",
+        "ot_assessment",
+        "speech_assessment",
+        "physiotherapy_assessment",
+        "mealtime_management_risk_assessment",
+        "disaster_management_risk_assessment",
+        "community_access_risk_assessment",
+        "restrictive_practice_authorisation",
+        "organisational_source",
+        "task_upload"
+      ],
+      "claimIntegrityRequired": true,
+      "documentToSections": [
+        {
+          "documentType": "NDIS plan",
+          "feeds": [
+            "GOALS",
+            "SUPPORT_DELIVERY_CLIENT_SAFETY"
+          ],
+          "requiredWhen": "always"
+        },
+        {
+          "documentType": "Strengths-based questionnaire",
+          "feeds": [
+            "ABOUT_ME",
+            "GOALS"
+          ],
+          "requiredWhen": "always"
+        },
+        {
+          "documentType": "Intake form",
+          "feeds": [
+            "SUPPORT_PLAN_MEETING",
+            "UNDERTAKING_ADL",
+            "COMMUNICATION_STRATEGY",
+            "MOBILITY_STRATEGY",
+            "SUPPORT_DELIVERY_CLIENT_SAFETY"
+          ],
+          "requiredWhen": "always"
+        },
+        {
+          "documentType": "Service agreement",
+          "feeds": [
+            "SUPPORT_DELIVERY_CLIENT_SAFETY"
+          ],
+          "requiredWhen": "always"
+        },
+        {
+          "documentType": "Behaviour support plan",
+          "feeds": [
+            "BEHAVIOURAL_MANAGEMENT",
+            "RESTRICTIVE_PRACTICES",
+            "COMMUNICATION_STRATEGY",
+            "GOALS"
+          ],
+          "requiredWhen": "where one exists"
+        },
+        {
+          "documentType": "Allied health reports",
+          "feeds": [
+            "GOALS",
+            "COMMUNICATION_STRATEGY",
+            "MOBILITY_STRATEGY",
+            "UNDERTAKING_ADL",
+            "HISTORY_BACKGROUND"
+          ],
+          "requiredWhen": "where relevant supports claimed"
+        },
+        {
+          "documentType": "Mealtime management risk assessment",
+          "feeds": [
+            "MEALTIME_MANAGEMENT_STRATEGY"
+          ],
+          "requiredWhen": "always"
+        },
+        {
+          "documentType": "Disaster management risk assessment",
+          "feeds": [
+            "DISASTER_MANAGEMENT_STRATEGY"
+          ],
+          "requiredWhen": "SIL and supported accommodation"
+        },
+        {
+          "documentType": "Community access risk assessment",
+          "feeds": [
+            "DISASTER_MANAGEMENT_STRATEGY"
+          ],
+          "requiredWhen": "community access participants"
+        }
+      ],
+      "freshnessRules": {
+        "currentnessRequired": true,
+        "documentToSectionsContract": true,
+        "memoryCannotProveCurrentness": true,
+        "participantDocumentsAreDistinctEvidenceClass": true,
+        "provenanceMustSurviveRetrieval": true
+      },
+      "minimumEvidenceCount": 5,
+      "missingEvidenceBehaviour": "block_completion",
+      "optionalEvidenceCategories": [
+        "behaviour_support_plan",
+        "allied_health_report",
+        "ot_assessment",
+        "speech_assessment",
+        "physiotherapy_assessment",
+        "disaster_management_risk_assessment",
+        "community_access_risk_assessment",
+        "restrictive_practice_authorisation",
+        "signing_process"
+      ],
+      "requiredEntityTypes": [
+        "participant"
+      ],
+      "requiredEvidenceCategories": [
+        "ndis_plan",
+        "strengths_based_questionnaire",
+        "intake_form",
+        "service_agreement",
+        "mealtime_management_risk_assessment"
+      ],
+      "restrictedSourceTypes": [
+        "memory_only",
+        "user_assertion_only",
+        "uncontrolled_copy"
+      ]
+    },
+    "id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+    "is_active": true,
+    "is_built_in": true,
+    "mandatory_citations": [
+      "participant_context",
+      "current_support_requirements"
+    ],
+    "maturity_state": "production_ready",
+    "objective": "Draft an operational/service-delivery support plan documenting goals, supports, coordination requirements and escalation needs. Do not make clinical, medication, dysphagia, mealtime or other credentialed health judgements.",
+    "organization_id": null,
+    "output_types": [
+      "care_plan"
+    ],
+    "owner_type": "platform_owned",
+    "permitted_org_overrides": {
+      "approvalWorkflow": true,
+      "namingConvention": true,
+      "outputFormatPreferences": true,
+      "templateSubstitution": true
+    },
+    "primary_deliverable": "Care Plan document",
+    "primary_specialist": "service_delivery_coordinator",
+    "purpose": "Support-worker-facing operational document carrying day-to-day strategies derived from specialist assessments without making specialist judgements itself. Clinical, medication, dysphagia, mealtime or other credentialed health judgements require external or appropriately credentialed professional authority.",
+    "quality_rules": [
+      {
+        "description": "Participant goals, preferences and support context are represented respectfully.",
+        "dimension": "participant_centred",
+        "weight": 30
+      },
+      {
+        "description": "Material claims are traceable to current evidence.",
+        "dimension": "evidence_traceability",
+        "weight": 30
+      },
+      {
+        "description": "Credentialed/professional boundaries are preserved.",
+        "dimension": "boundary_integrity",
+        "weight": 25
+      },
+      {
+        "description": "Document is structured, readable and complete.",
+        "dimension": "artifact_quality",
+        "weight": 15
+      }
+    ],
+    "required_approvals": {
+      "participant_support_content_owner": true
+    },
+    "required_entity_knowledge": {
+      "participant": true
+    },
+    "required_library_knowledge": [
+      "care_plan",
+      "health_support_plan",
+      "behaviour_support_plan",
+      "risk_assessment",
+      "restrictive_practice_authorisation"
+    ],
+    "required_memories": [
+      "operating_preference"
+    ],
+    "status": "published",
+    "success_criteria": [
+      "Required sections complete",
+      "Current evidence used",
+      "DOCX artifact generated",
+      "Unresolved gaps surfaced"
+    ],
+    "supported_modes": [
+      "create",
+      "review",
+      "revise"
+    ],
+    "supporting_specialists": [
+      "operations_manager",
+      "behaviour_support_implementation_specialist",
+      "authorised_program_officer",
+      "incident_safeguarding_specialist",
+      "compliance_quality_manager",
+      "knowledge_documentation_specialist"
+    ],
+    "template_required": true,
+    "template_version_policy": "pin_at_execution",
+    "title": "Care Plan",
+    "updated_at": "2026-09-24T08:19:19.814+00:00",
+    "validation_rules": [
+      {
+        "description": "Participant context must be present.",
+        "required": true,
+        "rule": "participant_context_present"
+      },
+      {
+        "description": "Current approved support requirements must be present or flagged as a blocker.",
+        "required": true,
+        "rule": "current_support_requirements_present"
+      },
+      {
+        "description": "Clinical, BSP and RP dependencies must be routed to the correct authority.",
+        "required": true,
+        "rule": "clinical_bsp_rp_boundaries_checked"
+      },
+      {
+        "description": "Review date is a valid date, later than the plan date.",
+        "required": true,
+        "rule": "care_plan_review_date_later_than_plan_date"
+      },
+      {
+        "description": "No timeframe field contains ongoing, TBC, as required or equivalent.",
+        "required": true,
+        "rule": "care_plan_no_invalid_timeframe"
+      },
+      {
+        "description": "Every selected support type has a non-empty description.",
+        "required": true,
+        "rule": "care_plan_selected_supports_described"
+      },
+      {
+        "description": "Every capacity-indicator section has a non-empty strategy narrative.",
+        "required": true,
+        "rule": "care_plan_capacity_strategy_narratives_present"
+      },
+      {
+        "description": "No conditional section is blank; content or explicit non-applicability with source is required.",
+        "required": true,
+        "rule": "care_plan_no_blank_conditional_sections"
+      },
+      {
+        "description": "Every goal row has all six columns populated.",
+        "required": true,
+        "rule": "care_plan_goal_rows_complete"
+      },
+      {
+        "description": "Minimum three personal goals present.",
+        "required": true,
+        "rule": "care_plan_minimum_three_personal_goals"
+      }
+    ],
+    "version": "1.0.0"
+  },
+  "blueprintId": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+  "capturedAt": "2026-10-28T23:40:58.212Z",
+  "counts": {
+    "platform_blueprints": 87
+  },
+  "sections": [
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Record every person who attended the planning meeting and their relationship to the participant. Where reports were used instead, name each report and its date.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Header fields: client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, date for review.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "intake_form",
+          "service_agreement",
+          "ndis_plan",
+          "clinical_report"
+        ],
+        "retrievalVocabulary": {
+          "accountableFields": [
+            "Participant name",
+            "Date of birth",
+            "Gender",
+            "Language spoken",
+            "NDIS number",
+            "Diagnosis",
+            "People present",
+            "Support plan developed by",
+            "Plan date",
+            "Date for review"
+          ],
+          "instrumentTerms": [
+            "date of birth",
+            "DOB",
+            "gender",
+            "language spoken",
+            "NDIS number",
+            "diagnosis",
+            "people present",
+            "planning meeting",
+            "review date"
+          ],
+          "sourceSynonyms": [
+            "intake checklist",
+            "home safety checklist",
+            "participant details",
+            "client details"
+          ]
+        }
+      },
+      "fixed_content": [
+        "This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.",
+        "Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
+      ],
+      "id": "platform_blueprint_care_plan_section_support_plan_meeting",
+      "instructions": "Populate the support plan meeting header from intake form, service agreement, NDIS plan and clinical report for diagnosis. Template mode uses labelled placeholders. Participant-specific mode requires populated values.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "SUPPORT_PLAN_MEETING",
+      "section_role": "user_facing",
+      "sort_order": 10,
+      "template_fields": [
+        "Participant name",
+        "Date of birth",
+        "Gender",
+        "Language spoken",
+        "NDIS number",
+        "Diagnosis",
+        "People present",
+        "Support plan developed by",
+        "Plan date",
+        "Date for review"
+      ],
+      "title": "Support Plan Meeting",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "State the current situation specifically \u2014 what the participant does now. State the goal as what the participant will do or achieve. Give a target date, not \"ongoing\". Name a role or person, not \"the team\".",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Table per objective: current situation, goal, actions, person responsible, timeframe, outcomes. Minimum three personal goals, plus NDIS goals where an NDIS plan exists.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "ndis_plan",
+          "strengths_based_questionnaire",
+          "participant_voice",
+          "allied_health_report"
+        ],
+        "retrievalVocabulary": {
+          "accountableFields": [
+            "Goal",
+            "Actions",
+            "Person responsible",
+            "Timeframe",
+            "Outcomes"
+          ],
+          "instrumentTerms": [
+            "goal",
+            "goals",
+            "objective",
+            "current situation",
+            "actions",
+            "person responsible",
+            "timeframe",
+            "target date",
+            "outcomes",
+            "NDIS goal",
+            "personal goal"
+          ],
+          "nonApplicabilityTerms": [
+            "not recorded",
+            "no NDIS plan",
+            "goal not recorded"
+          ],
+          "sourceSynonyms": [
+            "participant goals",
+            "plan goals",
+            "what matters",
+            "participant priorities"
+          ]
+        }
+      },
+      "fixed_content": [
+        "Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table below.",
+        "Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
+      ],
+      "id": "platform_blueprint_care_plan_section_goals",
+      "instructions": "Create a goal table with all six columns. NDIS goals sit in the same table alongside personal goals. Do not use ongoing as a timeframe.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "GOALS",
+      "section_role": "user_facing",
+      "sort_order": 20,
+      "template_fields": [
+        "Table with columns Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes",
+        "Minimum three personal goal rows, plus one row per NDIS plan goal"
+      ],
+      "title": "Goals",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Write in the participant's own words where possible. Record what they enjoy, what they find difficult, and what a good day looks like for them. History, diagnoses and risk information belong in History and Background, not here.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "The person \u2014 strengths, likes, dislikes, what matters to them, communication preferences, informal supports.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "strengths_based_questionnaire",
+          "participant_voice"
+        ]
+      },
+      "fixed_content": [
+        "This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
+      ],
+      "id": "platform_blueprint_care_plan_section_about_me",
+      "instructions": "Write about the person, not their deficits. Forensic history, family psychiatric history, trauma and service-involvement history do not belong here.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "ABOUT_ME",
+      "section_role": "user_facing",
+      "sort_order": 30,
+      "template_fields": [
+        "Strengths",
+        "Likes",
+        "Dislikes",
+        "What matters to me",
+        "How I prefer to communicate",
+        "People who matter to me",
+        "Informal supports"
+      ],
+      "title": "About Me",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Include only what changes how a worker should deliver support. Name the source document and date for each statement.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Background a support worker operationally needs \u2014 relevant history, prior service involvement, and risk-relevant context.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "allied_health_report",
+          "behaviour_support_plan",
+          "intake_form"
+        ]
+      },
+      "fixed_content": [
+        "This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
+      ],
+      "id": "platform_blueprint_care_plan_section_history_background",
+      "instructions": "Carry only what a support worker operationally needs. Every historical claim must be traceable to a named source document. Do not add clinical interpretation beyond the source.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "HISTORY_BACKGROUND",
+      "section_role": "user_facing",
+      "sort_order": 40,
+      "template_fields": [
+        "Relevant history",
+        "Prior service involvement",
+        "Risk-relevant context",
+        "Source documents and dates"
+      ],
+      "title": "History and Background",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Record a support level for every activity. Where the level is anything other than Independent or Not applicable, describe what the worker does. Do not leave an activity blank \u2014 use Not assessed and say why.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Personal grooming capacity and self-hygiene routine.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "intake_form",
+          "ot_assessment"
+        ],
+        "retrievalVocabulary": {
+          "accountableFields": [
+            "activity",
+            "support level",
+            "worker description",
+            "source value"
+          ],
+          "controlledMappings": [
+            {
+              "outputValue": "Independent",
+              "rule": "Checklist value maps directly to independent support level when the source row names the activity.",
+              "sourceValues": [
+                "Without support"
+              ]
+            },
+            {
+              "outputValue": "Unable to complete",
+              "rule": "Checklist value maps directly to unable-to-complete support level when the source row names the activity.",
+              "sourceValues": [
+                "Completely unable to"
+              ]
+            },
+            {
+              "outputValue": "Supported level requires cited context: prompting, supervision or partial physical assistance.",
+              "rule": "Support required is not a complete support-level mapping without additional cited worker-support context.",
+              "sourceValues": [
+                "Support required"
+              ],
+              "terms": [
+                "prompting",
+                "supervision",
+                "hands-on support",
+                "physical assistance",
+                "support worker assistance"
+              ]
+            }
+          ],
+          "instrumentTerms": [
+            "Oral hygiene",
+            "Brush teeth",
+            "Showering and bathing",
+            "Take a shower",
+            "Personal hygiene and grooming",
+            "Comb hair",
+            "Brush hair",
+            "Shaving",
+            "Dressing and undressing",
+            "Dressing",
+            "Toileting and continence",
+            "Use toilet",
+            "Post toilet hygiene",
+            "Meal preparation",
+            "Cooking",
+            "Eating and drinking",
+            "Medication management",
+            "Cleaning",
+            "Household cleaning",
+            "Washing dishes",
+            "Laundry",
+            "Transfers and positioning",
+            "Transfer to/from bed",
+            "Mobility within the home",
+            "Walk without aid",
+            "Community access",
+            "Transport and travel",
+            "Use public transport",
+            "Money handling",
+            "Money handling and everyday purchases",
+            "Shopping",
+            "Making appointments",
+            "Attending appointments",
+            "Phone use",
+            "Communication device",
+            "Personal safety",
+            "Without support",
+            "Support required",
+            "Completely unable to",
+            "Independent",
+            "Prompting",
+            "Supervision",
+            "Physical assistance",
+            "Not assessed",
+            "Not applicable"
+          ],
+          "nonApplicabilityTerms": [
+            "not assessed",
+            "not applicable",
+            "no functional assessment",
+            "not recorded"
+          ],
+          "sourceSynonyms": [
+            "ADL checklist",
+            "activities of daily living",
+            "daily living",
+            "functional assessment",
+            "capacity checklist",
+            "intake checklist",
+            "home safety checklist"
+          ]
+        }
+      },
+      "fixed_content": [
+        "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated.",
+        "Each activity below is recorded against one support level. Where an activity requires a specific strategy, that strategy is recorded in the section that governs it \u2014 mobility and transfers in Mobility and Mobility Strategy, meal preparation and eating in Mealtime Management Strategy, and medication in the participant's health support plan. This section records the level of support required, not the clinical or specialist strategy.",
+        "Support levels: Independent \u2014 completes the activity safely and effectively without assistance. Independent with prompting \u2014 physically completes the activity but requires verbal, visual or gestural prompts, reminders or task initiation. Independent with supervision \u2014 completes the activity but requires another person to remain available or observe for safety. Partial physical assistance \u2014 completes part of the activity but requires hands-on assistance for specific components. Full physical assistance \u2014 requires hands-on support for most or all of the activity. Unable to complete \u2014 cannot currently undertake the activity, even with ordinary prompting or supervision, without another person completing it. Not applicable / not assessed \u2014 activity is not relevant or sufficient information is unavailable.",
+        "Intake checklist source-value mapping: Without support maps to Independent. Completely unable to maps to Unable to complete. Support required maps to Independent with prompting, Independent with supervision or Partial physical assistance, chosen from other cited evidence; where nothing distinguishes those levels, use the least restrictive supported level. Absent checklist values map to Not applicable / not assessed.",
+        "Intake checklist source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing; Comb/brush hair and Shaving -> Personal hygiene and grooming; Dressing -> Dressing and undressing; Use toilet and Post toilet hygiene -> Toileting and continence; Cooking -> Meal preparation; Cleaning and Washing dishes -> Household cleaning; Transfer to/from bed -> Transfers and positioning; Money handling -> Money handling and everyday purchases; Walk without aid -> Mobility within the home; Use public transport -> Transport and travel. Where several source items map to one row and disagree, use the highest support level and name the differing parts in the worker description."
+      ],
+      "id": "platform_blueprint_care_plan_section_undertaking_adl",
+      "instructions": "State what the participant does independently, what needs prompting and what needs hands-on support.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "UNDERTAKING_ADL",
+      "section_role": "user_facing",
+      "sort_order": 50,
+      "template_fields": [
+        "Table with columns Activity | Support level | What the worker does, emitted deterministically with rows: Personal hygiene and grooming / Showering and bathing / Dressing and undressing / Toileting and continence / Oral hygiene / Eating and drinking / Meal preparation / Medication management / Mobility within the home / Transfers and positioning / Bedtime and morning routines / Household cleaning / Laundry and clothing care / Making and changing bedding / Shopping for essential items / Managing personal belongings / Using household appliances / Maintaining a safe home environment / Managing daily routines / Time awareness and task initiation / Attending appointments / Community access / Transport and travel / Money handling and everyday purchases / Communication of daily needs / Decision-making relating to daily activities"
+      ],
+      "title": "Undertaking ADL",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Describe what the worker should actually do: how to gain attention, how long to allow for a response, what signs indicate the participant has or has not understood, and what to avoid.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "intake_form",
+          "speech_assessment",
+          "behaviour_support_plan",
+          "allied_health_report"
+        ]
+      },
+      "fixed_content": [
+        "Every worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift."
+      ],
+      "id": "platform_blueprint_care_plan_section_communication_strategy",
+      "instructions": "Complete capacity indicators and write the strategy a worker should actually use. Do not leave overview/strategy blank.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "COMMUNICATION_STRATEGY",
+      "section_role": "user_facing",
+      "sort_order": 60,
+      "template_fields": [
+        "Verbal / non-verbal",
+        "Expressive capacity",
+        "Receptive capacity",
+        "Communication aid or system used",
+        "Communication strategy"
+      ],
+      "title": "Communication and Communication Strategy",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Name the specific aid and describe how it is used. Where transfers are required, state the method and the number of workers needed.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Aid required / not required; overview and strategy.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "intake_form",
+          "physiotherapy_assessment",
+          "ot_assessment"
+        ],
+        "retrievalVocabulary": {
+          "accountableFields": [
+            "Mobility aid required",
+            "Aid or equipment used",
+            "Transfer method",
+            "Number of workers required",
+            "Mobility overview",
+            "Mobility strategy"
+          ],
+          "instrumentTerms": [
+            "mobility aid",
+            "aid required",
+            "aid not required",
+            "walking aid",
+            "wheelchair",
+            "walker",
+            "frame",
+            "transfer",
+            "transfer method",
+            "number of workers",
+            "falls",
+            "supervision",
+            "walk without aid",
+            "public transport"
+          ],
+          "nonApplicabilityTerms": [
+            "no aid required",
+            "not assessed",
+            "not recorded"
+          ],
+          "sourceSynonyms": [
+            "mobility checklist",
+            "manual handling",
+            "transfer assessment",
+            "physiotherapy assessment",
+            "OT assessment"
+          ]
+        }
+      },
+      "fixed_content": [
+        "Where a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted."
+      ],
+      "id": "platform_blueprint_care_plan_section_mobility_strategy",
+      "instructions": "Complete the capacity indicator and strategy narrative. Where an aid is used, name it and describe its use.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "MOBILITY_STRATEGY",
+      "section_role": "user_facing",
+      "sort_order": 70,
+      "template_fields": [
+        "Mobility aid required",
+        "Aid or equipment used",
+        "Transfer method",
+        "Number of workers required",
+        "Mobility overview",
+        "Mobility strategy"
+      ],
+      "title": "Mobility and Mobility Strategy",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "For every support type selected, describe what the worker does, how often, and for how long.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Support type checklist \u2014 in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning \u2014 plus description of support.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "service_agreement",
+          "intake_form"
+        ]
+      },
+      "fixed_content": [
+        "Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager.",
+        "Incidents. Any incident affecting the participant must be reported to the service manager immediately and recorded in the provider's incident management system before the end of shift.",
+        "Reportable incidents. Where an incident meets the NDIS reportable incident criteria, the provider must submit an Immediate Notification Form to the NDIS Quality and Safeguards Commission within 24 hours of key personnel becoming aware of it, followed by a further form providing additional information and the actions taken within five business days. The 24-hour clock starts when key personnel become aware, not when the incident occurred.",
+        "The exception is the use of a restrictive practice that is unauthorised or not in accordance with the participant's behaviour support plan, which is notified within five business days \u2014 unless it resulted in harm, in which case the 24-hour timeframe applies.",
+        "Escalation. In an emergency, call 000 first, then notify the on-call service manager. For non-emergency concerns about the participant's wellbeing, contact the service manager the same day."
+      ],
+      "id": "platform_blueprint_care_plan_section_support_delivery_client_safety",
+      "instructions": "Every selected support type must have a corresponding description stating what the worker does. Reconcile selected supports against funded supports in the service agreement.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "SUPPORT_DELIVERY_CLIENT_SAFETY",
+      "section_role": "user_facing",
+      "sort_order": 80,
+      "template_fields": [
+        "Support types selected from \u2014 In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning",
+        "Description per selected type",
+        "On-call contact",
+        "Service manager contact"
+      ],
+      "title": "Support Delivery and Client Safety",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Take each behaviour, trigger and strategy directly from the behaviour support plan. Classify strategies as proactive, reactive and protective for operational use. A strategy may appear in more than one fold where the BSP uses it at multiple stages. Every row must carry the quoted BSP passage and location it came from. Do not invent strategies.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Three fold tables for proactive, reactive and protective behaviour support strategies.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "behaviour_support_plan"
+        ],
+        "retrievalVocabulary": {
+          "accountableFields": [
+            "fold",
+            "behaviour or trigger",
+            "strategy",
+            "worker action",
+            "BSP source"
+          ],
+          "instrumentTerms": [
+            "behaviour of concern",
+            "trigger",
+            "setting event",
+            "proactive strategy",
+            "reactive strategy",
+            "protective strategy",
+            "early warning sign",
+            "escalation",
+            "worker action",
+            "BSP source",
+            "behaviour support plan"
+          ],
+          "nonApplicabilityTerms": [
+            "no behaviours of concern",
+            "no BSP",
+            "not applicable"
+          ],
+          "sourceSynonyms": [
+            "BSP",
+            "behaviour support",
+            "behavioural strategy",
+            "response strategy"
+          ]
+        }
+      },
+      "fixed_content": [
+        "The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift.",
+        "Strategies are grouped in escalation order. Proactive strategies are used routinely to prevent escalation. Reactive strategies are used when early signs appear or a behaviour has begun. Protective strategies are used only where there is risk of harm, as a last resort and for the shortest time necessary.",
+        "Workers must not use any restrictive practice that is not recorded in the behaviour support plan and listed in the Restrictive Practices section of this plan. Use of an unauthorised restrictive practice is a reportable incident.",
+        "Where a behaviour escalates beyond the strategies below, workers withdraw to a safe distance, ensure the safety of the participant and others, and contact the on-call service manager.",
+        "These strategies are derived from the behaviour support plan and grouped for operational use. They are confirmed by the provider's Authorised Program Officer before this plan is approved, and reviewed whenever the behaviour support plan changes."
+      ],
+      "id": "platform_blueprint_care_plan_section_behavioural_management",
+      "instructions": "Conditional. Where a BSP exists, behaviours of concern are recorded, or any goal references behaviour, classify and render BSP-derived strategies in proactive, reactive and protective folds. Where none apply, state non-applicability naming the source. Authority boundary: implements an existing BSP. Does not author, amend, or make practitioner-level behaviour support decisions.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "BEHAVIOURAL_MANAGEMENT",
+      "section_role": "user_facing",
+      "sort_order": 90,
+      "template_fields": [
+        "Proactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
+        "Reactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
+        "Protective strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source"
+      ],
+      "title": "Behavioural Management",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Name each authorised practice in plain language, state what the worker does and does not do, and record the authorisation reference from the behaviour support plan. Where none are in place, use this paragraph instead of the table: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Table of authorised restrictive practices and worker instructions.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "behaviour_support_plan",
+          "restrictive_practice_authorisation"
+        ],
+        "retrievalVocabulary": {
+          "accountableFields": [
+            "Table with columns Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement"
+          ],
+          "instrumentTerms": [
+            "Chemical restraint",
+            "Environmental restraint",
+            "Mechanical restraint",
+            "Physical restraint",
+            "Seclusion",
+            "Authorised",
+            "Unauthorised",
+            "Authorisation",
+            "Authorisation status",
+            "Restrictive practice authorisation",
+            "Recording requirement",
+            "Prohibited actions"
+          ],
+          "nonApplicabilityTerms": [
+            "no restrictive practices",
+            "none authorised",
+            "not authorised",
+            "not recorded"
+          ],
+          "sourceSynonyms": [
+            "regulated restrictive practice",
+            "RPA",
+            "restrictive practice authorisation",
+            "behaviour support plan",
+            "BSP"
+          ]
+        }
+      },
+      "fixed_content": [
+        "A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability. The NDIS Commission regulates five: chemical restraint, environmental restraint, mechanical restraint, physical restraint and seclusion.",
+        "Any regulated restrictive practice used with this participant must be authorised under applicable state or territory law, recorded in a current behaviour support plan, and listed below. Restrictive practices are used only as a last resort and for the shortest time necessary.",
+        "Workers must use only the practices listed, only as described, and must record every use.",
+        "Using a regulated restrictive practice that is not listed here, or using a listed practice differently from how it is described, is an unauthorised restrictive practice. It is a reportable incident and must be reported immediately."
+      ],
+      "id": "platform_blueprint_care_plan_section_restrictive_practices",
+      "instructions": "Conditional. Where any restrictive practice is in place, render each practice as a row with type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement. Where none, state non-applicability naming the source. Authority boundary: does not determine, grant or assess restrictive practice authorisation.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "RESTRICTIVE_PRACTICES",
+      "section_role": "user_facing",
+      "sort_order": 100,
+      "template_fields": [
+        "Table with columns Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement"
+      ],
+      "title": "Restrictive Practices",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Record the strategy exactly as set out in the mealtime management risk assessment. Where no hands-on strategy is required, use this paragraph instead of the strategy fields: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "The mealtime strategy a support worker executes.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "mealtime_management_risk_assessment"
+        ]
+      },
+      "fixed_content": [
+        "Mealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here.",
+        "Assessment of swallowing, dysphagia risk and texture modification is made only by an appropriately credentialed professional. This plan carries the resulting strategy; it does not make the assessment."
+      ],
+      "id": "platform_blueprint_care_plan_section_mealtime_management_strategy",
+      "instructions": "Draw the strategy from the mealtime management risk assessment and cite it. Where no hands-on strategy is required, state so with reference to the assessment and describe what does apply. Authority boundary: dysphagia, swallowing, texture-modification and other credentialed mealtime judgements require external or appropriately credentialed professional authority.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "MEALTIME_MANAGEMENT_STRATEGY",
+      "section_role": "user_facing",
+      "sort_order": 110,
+      "template_fields": [
+        "Source risk assessment and date",
+        "Food texture",
+        "Fluid consistency",
+        "Positioning",
+        "Supervision level",
+        "Equipment",
+        "Worker actions"
+      ],
+      "title": "Mealtime Management Strategy",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "State the participant-specific arrangements. Do not reproduce the site emergency plan.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Participant-specific disaster and evacuation arrangements.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "disaster_management_risk_assessment",
+          "community_access_risk_assessment"
+        ]
+      },
+      "fixed_content": [
+        "This section records what workers do with this participant in an emergency or evacuation. It supplements, and does not replace, the site emergency plan.",
+        "In any emergency, worker priority is the safety of the participant and themselves. Call 000 first, then notify the on-call service manager."
+      ],
+      "id": "platform_blueprint_care_plan_section_disaster_management_strategy",
+      "instructions": "Conditional. For SIL and supported accommodation, source from the disaster management risk assessment. For community access, source from the community access risk assessment and address both general and location-specific risk. For other settings, leave the [OPEN] decision visible and do not invent a rule.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "DISASTER_MANAGEMENT_STRATEGY",
+      "section_role": "user_facing",
+      "sort_order": 120,
+      "template_fields": [
+        "SIL and supported accommodation: Evacuation assistance required, Assembly point, Equipment needed, Communication approach during evacuation, Medications or equipment to take, Who to notify",
+        "Community access: General risk arrangements, Location-specific risk arrangements, Transport contingency, What the worker carries, How the participant is returned to a safe location"
+      ],
+      "title": "Disaster Management Strategy",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Where the participant cannot sign, record who signed on their behalf and their authority to do so. List everyone the plan is provided to, and reference the consent form completed at intake.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Agreement statement, name of client or representative, signature, date, provided-to list, consent obtained.",
+      "evidence_requirements": {
+        "minimumEvidenceCount": 1,
+        "requiredEvidenceCategories": [
+          "signing_process"
+        ]
+      },
+      "fixed_content": [
+        "I have been involved in the development of this Care Plan. My needs, preferences, choices and goals have been considered, and I agree with the supports outlined in this plan."
+      ],
+      "id": "platform_blueprint_care_plan_section_client_endorsement",
+      "instructions": "Provide a complete-able endorsement block. Do not fabricate signature or consent state.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "CLIENT_ENDORSEMENT",
+      "section_role": "user_facing",
+      "sort_order": 130,
+      "template_fields": [
+        "Participant or representative name",
+        "Relationship to participant",
+        "Signature",
+        "Date",
+        "Plan provided to",
+        "Consent form reference and date"
+      ],
+      "title": "Client Endorsement",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    },
+    {
+      "allowed_source_types": [
+        "controlled_document",
+        "participant_record",
+        "service_delivery_record",
+        "clinical_professional_document",
+        "audit_record",
+        "compliance_register",
+        "regulatory_guidance",
+        "regulator_correspondence",
+        "employment_record",
+        "payroll_record",
+        "service_agreement",
+        "task_upload"
+      ],
+      "blueprint_id": "07f09658-1024-4c71-a1e5-2d0e197f0e7b",
+      "completion_prompt": "Record the form ID, version and date. The review date must match the date recorded in the plan header.",
+      "created_at": "2026-08-29T08:11:56.127+00:00",
+      "description": "Form ID, version, date, \"uncontrolled when printed\" statement.",
+      "evidence_requirements": {},
+      "fixed_content": [
+        "Uncontrolled when printed. The current version of this document is held in the provider's document management system."
+      ],
+      "id": "platform_blueprint_care_plan_section_document_control",
+      "instructions": "Include form ID, version and date. Review date must be consistent with Support Plan Meeting.",
+      "minimum_content_expectation": "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+      "prohibited_assumptions": [
+        "Do not invent participant facts.",
+        "Do not treat memory or user assertion as current approved evidence.",
+        "Do not change clinical, BSP, RP or safeguarding meaning."
+      ],
+      "quality_criteria": [
+        {
+          "criterion": "participant_centred_traceable",
+          "description": "Content is participant-centred and traceable to evidence."
+        }
+      ],
+      "required": true,
+      "section_code": "DOCUMENT_CONTROL",
+      "section_role": "user_facing",
+      "sort_order": 140,
+      "template_fields": [
+        "Form ID",
+        "Version",
+        "Date",
+        "Next review date"
+      ],
+      "title": "Document Control",
+      "updated_at": "2026-09-24T08:19:19.729+00:00",
+      "validation_rules": []
+    }
+  ]
+}

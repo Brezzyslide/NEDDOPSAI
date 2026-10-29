@@ -2324,6 +2324,9 @@ export interface VerifiedScopedBlueprintRestoreArtifact {
   rollback?: ScopedBlueprintRestoreArtifact;
   blueprint?: WorkBlueprint;
   sections?: BlueprintSection[];
+  blueprintId?: string;
+  capturedAt?: string;
+  counts?: Record<string, unknown>;
 }
 
 export interface ScopedBlueprintRestoreInput {
@@ -2409,6 +2412,10 @@ function sectionRestoreValues(section: BlueprintSection, blueprintId: string, no
   };
 }
 
+function sectionRestoreValuesPreservingTimestamps(section: BlueprintSection, blueprintId: string) {
+  return sectionRestoreValues(section, blueprintId, section.updatedAt);
+}
+
 function sectionWritableValuesToBlueprintSection(
   id: string,
   values: ReturnType<typeof sectionToWritableValues>,
@@ -2467,7 +2474,7 @@ function sectionRestoreValuesToBlueprintSection(
   };
 }
 
-function blueprintRestoreValues(blueprint: WorkBlueprint, contentHash: string, now: Date): Partial<WorkBlueprint> {
+function blueprintRestoreValues(blueprint: WorkBlueprint, contentHash: string, updatedAt: Date): Partial<WorkBlueprint> {
   return {
     title: blueprint.title,
     version: blueprint.version,
@@ -2501,7 +2508,7 @@ function blueprintRestoreValues(blueprint: WorkBlueprint, contentHash: string, n
     mandatoryCitations: blueprint.mandatoryCitations,
     isBuiltIn: blueprint.isBuiltIn,
     isActive: blueprint.isActive,
-    updatedAt: now,
+    updatedAt,
   };
 }
 
@@ -2561,12 +2568,97 @@ function normaliseRestoreSection(input: BlueprintSection, blueprintId: string): 
   };
 }
 
+function fromSnapshotDate(value: unknown): Date {
+  return asDate(value);
+}
+
+function maybeRawBlueprint(input: unknown): WorkBlueprint | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  if (!("content_hash" in raw) && !("organization_id" in raw)) return null;
+  return {
+    id: String(raw.id),
+    organizationId: raw.organization_id === null || raw.organization_id === undefined ? null : String(raw.organization_id),
+    code: String(raw.code),
+    title: String(raw.title),
+    version: String(raw.version),
+    contentHash: raw.content_hash === null || raw.content_hash === undefined ? null : String(raw.content_hash),
+    blueprintFamily: raw.blueprint_family === null || raw.blueprint_family === undefined ? null : String(raw.blueprint_family),
+    supportedModes: Array.isArray(raw.supported_modes) ? raw.supported_modes as string[] : [],
+    maturityState: (raw.maturity_state as BlueprintMaturityState | null) ?? "placeholder",
+    ownerType: (raw.owner_type as BlueprintOwnerType | null) ?? (raw.organization_id ? "organisation_owned" : "platform_owned"),
+    purpose: raw.purpose === null || raw.purpose === undefined ? null : String(raw.purpose),
+    primaryDeliverable: raw.primary_deliverable === null || raw.primary_deliverable === undefined ? null : String(raw.primary_deliverable),
+    deliverableContract: (raw.deliverable_contract as BlueprintDeliverableContract | null) ?? null,
+    evidenceContract: (raw.evidence_contract as BlueprintEvidenceContract | null) ?? null,
+    permittedOrgOverrides: (raw.permitted_org_overrides as BlueprintPermittedOrgOverrides | null) ?? {},
+    defaultTemplateId: raw.default_template_id === null || raw.default_template_id === undefined ? null : String(raw.default_template_id),
+    templateRequired: Boolean(raw.template_required),
+    allowedOrgTemplateOverride: Boolean(raw.allowed_org_template_override),
+    templateVersionPolicy: (raw.template_version_policy as BlueprintTemplateVersionPolicy | null) ?? "pin_at_execution",
+    status: (raw.status as BlueprintStatus | null) ?? "draft",
+    objective: String(raw.objective),
+    primarySpecialist: String(raw.primary_specialist),
+    supportingSpecialists: Array.isArray(raw.supporting_specialists) ? raw.supporting_specialists as string[] : [],
+    requiredLibraryKnowledge: Array.isArray(raw.required_library_knowledge) ? raw.required_library_knowledge as string[] : [],
+    requiredEntityKnowledge: (raw.required_entity_knowledge as Record<string, unknown> | null) ?? {},
+    requiredMemories: Array.isArray(raw.required_memories) ? raw.required_memories as string[] : [],
+    requiredApprovals: (raw.required_approvals as Record<string, unknown> | null) ?? {},
+    validationRules: (raw.validation_rules as WorkBlueprint["validationRules"] | null) ?? [],
+    qualityRules: (raw.quality_rules as WorkBlueprint["qualityRules"] | null) ?? [],
+    successCriteria: Array.isArray(raw.success_criteria) ? raw.success_criteria as string[] : [],
+    outputTypes: Array.isArray(raw.output_types) ? raw.output_types as string[] : [],
+    escalationRules: (raw.escalation_rules as WorkBlueprint["escalationRules"] | null) ?? [],
+    mandatoryCitations: Array.isArray(raw.mandatory_citations) ? raw.mandatory_citations as string[] : [],
+    isBuiltIn: Boolean(raw.is_built_in),
+    isActive: Boolean(raw.is_active),
+    createdAt: fromSnapshotDate(raw.created_at),
+    updatedAt: fromSnapshotDate(raw.updated_at),
+  };
+}
+
+function maybeRawSection(input: unknown, blueprintId: string): BlueprintSection | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  if (!("blueprint_id" in raw) && !("section_code" in raw)) return null;
+  return {
+    id: String(raw.id),
+    blueprintId: raw.blueprint_id === undefined ? blueprintId : String(raw.blueprint_id),
+    sectionCode: String(raw.section_code),
+    title: String(raw.title),
+    description: raw.description === null || raw.description === undefined ? null : String(raw.description),
+    instructions: raw.instructions === null || raw.instructions === undefined ? null : String(raw.instructions),
+    sectionRole: (raw.section_role as BlueprintSectionRole | null) ?? null,
+    fixedContent: Array.isArray(raw.fixed_content) ? raw.fixed_content as string[] : [],
+    fields: Array.isArray(raw.template_fields) ? raw.template_fields as string[] : [],
+    completionPrompt: raw.completion_prompt === null || raw.completion_prompt === undefined ? null : String(raw.completion_prompt),
+    required: Boolean(raw.required),
+    minimumContentExpectation: raw.minimum_content_expectation === null || raw.minimum_content_expectation === undefined
+      ? null
+      : String(raw.minimum_content_expectation),
+    evidenceRequirements: (raw.evidence_requirements as Record<string, unknown> | null) ?? {},
+    allowedSourceTypes: Array.isArray(raw.allowed_source_types) ? raw.allowed_source_types as string[] : [],
+    prohibitedAssumptions: Array.isArray(raw.prohibited_assumptions) ? raw.prohibited_assumptions as string[] : [],
+    validationRules: (raw.validation_rules as BlueprintSection["validationRules"] | null) ?? [],
+    qualityCriteria: (raw.quality_criteria as BlueprintSection["qualityCriteria"] | null) ?? [],
+    sortOrder: Number(raw.sort_order ?? 0),
+    createdAt: fromSnapshotDate(raw.created_at),
+    updatedAt: fromSnapshotDate(raw.updated_at),
+  };
+}
+
 export function readVerifiedScopedBlueprintRestoreArtifact(
   artifact: VerifiedScopedBlueprintRestoreArtifact,
 ): { blueprint: WorkBlueprint; sections: BlueprintSection[]; computedHash: string; recordedHash: string } {
-  const payload = artifact.rollback ?? (
-    artifact.blueprint && artifact.sections ? { blueprint: artifact.blueprint, sections: artifact.sections } : null
-  );
+  const rawBlueprint = maybeRawBlueprint(artifact.blueprint);
+  const rawSections = rawBlueprint && Array.isArray(artifact.sections)
+    ? artifact.sections.map((section) => maybeRawSection(section, rawBlueprint.id))
+    : null;
+  const payload = rawBlueprint && rawSections?.every(Boolean)
+    ? { blueprint: rawBlueprint, sections: rawSections as BlueprintSection[] }
+    : artifact.rollback ?? (
+      artifact.blueprint && artifact.sections ? { blueprint: artifact.blueprint, sections: artifact.sections } : null
+    );
   if (!payload?.blueprint || !Array.isArray(payload.sections)) {
     throw new Error("Restore artifact must contain rollback.blueprint and rollback.sections");
   }
@@ -2629,17 +2721,16 @@ export function buildScopedBlueprintRestorePlan(input: {
     throw new Error("Restore artifact organization scope does not match live row");
   }
 
-  const now = input.now ?? new Date();
   const nextBlueprint: WorkBlueprint = {
     ...input.currentBlueprint,
     ...restore.blueprint,
     contentHash: restore.computedHash,
-    updatedAt: now,
+    updatedAt: restore.blueprint.updatedAt,
   };
   const currentSectionById = new Map(input.currentSections.map((section) => [section.id, section]));
   const nextSections = restore.sections.map((section) => sectionRestoreValuesToBlueprintSection(
     section.id,
-    sectionRestoreValues(section, restore.blueprint.id, now),
+    sectionRestoreValuesPreservingTimestamps(section, restore.blueprint.id),
     currentSectionById.get(section.id)?.createdAt ?? section.createdAt,
   ));
 
@@ -2725,7 +2816,26 @@ function blueprintTargetValues(entry: RegistryEntry, current: WorkBlueprint, now
 
 function normaliseDiffValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map((item) => normaliseDiffValue(item));
+  if (value && typeof value === "object") {
+    const output: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      output[key] = normaliseDiffValue((value as Record<string, unknown>)[key]);
+    }
+    return output;
+  }
   return value;
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(normaliseDiffValue(value));
+}
+
+function recordsCanonicallyEqual(
+  current: Record<string, unknown> | null,
+  next: Record<string, unknown> | null,
+): boolean {
+  return canonicalJson(current ?? null) === canonicalJson(next ?? null);
 }
 
 function diffRecords(
@@ -2737,7 +2847,7 @@ function diffRecords(
   for (const key of [...keys].sort()) {
     const currentValue = normaliseDiffValue(current?.[key]);
     const nextValue = normaliseDiffValue(next?.[key]);
-    if (JSON.stringify(currentValue) !== JSON.stringify(nextValue)) {
+    if (canonicalJson(currentValue) !== canonicalJson(nextValue)) {
       changes[key] = { current: currentValue, next: nextValue };
     }
   }
@@ -2870,13 +2980,15 @@ export async function publishScopedRegistryBlueprint(
     };
   }
 
-  await db
-    .update(workBlueprintsTable)
-    .set({
-      ...blueprintTargetValues(entry, currentBlueprint, now),
-      contentHash: plan.nextContentHash,
-    })
-    .where(eq(workBlueprintsTable.id, currentBlueprint.id));
+  if (Object.keys(plan.diff.blueprint).length > 0) {
+    await db
+      .update(workBlueprintsTable)
+      .set({
+        ...blueprintTargetValues(entry, currentBlueprint, now),
+        contentHash: plan.nextContentHash,
+      })
+      .where(eq(workBlueprintsTable.id, currentBlueprint.id));
+  }
 
   if (plan.expectedSectionIds.length === 0) {
     await db
@@ -2894,13 +3006,18 @@ export async function publishScopedRegistryBlueprint(
   for (const section of entry.sections ?? []) {
     const id = registrySectionId(entry.code, section.sectionCode);
     const values = sectionToWritableValues(section, currentBlueprint.id, now);
+    const nextFields = sectionDiffFields(sectionWritableValuesToBlueprintSection(id, values, currentSections.find((current) => current.id === id)?.createdAt ?? now));
     const existing = await db
-      .select({ id: blueprintSectionsTable.id })
+      .select()
       .from(blueprintSectionsTable)
       .where(eq(blueprintSectionsTable.id, id))
       .limit(1);
 
     if (existing.length > 0) {
+      const currentSection = mapSectionRow(existing[0]);
+      if (recordsCanonicallyEqual(sectionDiffFields(currentSection), nextFields)) {
+        continue;
+      }
       await db
         .update(blueprintSectionsTable)
         .set(values)
@@ -2977,10 +3094,12 @@ export async function restoreScopedBlueprintFromVerifiedArtifact(
     };
   }
 
-  await db
-    .update(workBlueprintsTable)
-    .set(blueprintRestoreValues(artifact.blueprint, artifact.computedHash, now))
-    .where(eq(workBlueprintsTable.id, artifact.blueprint.id));
+  if (Object.keys(plan.diff.blueprint).length > 0) {
+    await db
+      .update(workBlueprintsTable)
+      .set(blueprintRestoreValues(artifact.blueprint, artifact.computedHash, artifact.blueprint.updatedAt))
+      .where(eq(workBlueprintsTable.id, artifact.blueprint.id));
+  }
 
   const restoreSectionIds = artifact.sections.map((section) => section.id);
   if (restoreSectionIds.length === 0) {
@@ -2997,14 +3116,19 @@ export async function restoreScopedBlueprintFromVerifiedArtifact(
   }
 
   for (const section of artifact.sections) {
-    const values = sectionRestoreValues(section, artifact.blueprint.id, now);
+    const values = sectionRestoreValuesPreservingTimestamps(section, artifact.blueprint.id);
+    const nextFields = sectionDiffFields(sectionRestoreValuesToBlueprintSection(section.id, values, section.createdAt));
     const existing = await db
-      .select({ id: blueprintSectionsTable.id })
+      .select()
       .from(blueprintSectionsTable)
       .where(eq(blueprintSectionsTable.id, section.id))
       .limit(1);
 
     if (existing.length > 0) {
+      const currentSection = mapSectionRow(existing[0]);
+      if (recordsCanonicallyEqual(sectionDiffFields(currentSection), nextFields)) {
+        continue;
+      }
       await db
         .update(blueprintSectionsTable)
         .set(values)

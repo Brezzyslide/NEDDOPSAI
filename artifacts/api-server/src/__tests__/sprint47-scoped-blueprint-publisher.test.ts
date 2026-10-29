@@ -17,6 +17,136 @@ function scopedPublisherSource(): string {
   return text.slice(start, end);
 }
 
+function dateIso(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function comparableBlueprint(blueprint: {
+  id: string;
+  organizationId: string | null;
+  code: string;
+  title: string;
+  version: string;
+  contentHash?: string | null;
+  blueprintFamily: string | null;
+  supportedModes: string[];
+  maturityState: string;
+  ownerType: string;
+  purpose: string | null;
+  primaryDeliverable: string | null;
+  deliverableContract: unknown;
+  evidenceContract: unknown;
+  permittedOrgOverrides: unknown;
+  defaultTemplateId: string | null;
+  templateRequired: boolean;
+  allowedOrgTemplateOverride: boolean;
+  templateVersionPolicy: string;
+  status: string;
+  objective: string;
+  primarySpecialist: string;
+  supportingSpecialists: string[];
+  requiredLibraryKnowledge: string[];
+  requiredEntityKnowledge: unknown;
+  requiredMemories: string[];
+  requiredApprovals: unknown;
+  validationRules: unknown[];
+  qualityRules: unknown[];
+  successCriteria: string[];
+  outputTypes: string[];
+  escalationRules: unknown[];
+  mandatoryCitations: string[];
+  isBuiltIn: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}): Record<string, unknown> {
+  return {
+    id: blueprint.id,
+    organizationId: blueprint.organizationId,
+    code: blueprint.code,
+    title: blueprint.title,
+    version: blueprint.version,
+    contentHash: blueprint.contentHash ?? null,
+    blueprintFamily: blueprint.blueprintFamily,
+    supportedModes: blueprint.supportedModes,
+    maturityState: blueprint.maturityState,
+    ownerType: blueprint.ownerType,
+    purpose: blueprint.purpose,
+    primaryDeliverable: blueprint.primaryDeliverable,
+    deliverableContract: blueprint.deliverableContract,
+    evidenceContract: blueprint.evidenceContract,
+    permittedOrgOverrides: blueprint.permittedOrgOverrides,
+    defaultTemplateId: blueprint.defaultTemplateId,
+    templateRequired: blueprint.templateRequired,
+    allowedOrgTemplateOverride: blueprint.allowedOrgTemplateOverride,
+    templateVersionPolicy: blueprint.templateVersionPolicy,
+    status: blueprint.status,
+    objective: blueprint.objective,
+    primarySpecialist: blueprint.primarySpecialist,
+    supportingSpecialists: blueprint.supportingSpecialists,
+    requiredLibraryKnowledge: blueprint.requiredLibraryKnowledge,
+    requiredEntityKnowledge: blueprint.requiredEntityKnowledge,
+    requiredMemories: blueprint.requiredMemories,
+    requiredApprovals: blueprint.requiredApprovals,
+    validationRules: blueprint.validationRules,
+    qualityRules: blueprint.qualityRules,
+    successCriteria: blueprint.successCriteria,
+    outputTypes: blueprint.outputTypes,
+    escalationRules: blueprint.escalationRules,
+    mandatoryCitations: blueprint.mandatoryCitations,
+    isBuiltIn: blueprint.isBuiltIn,
+    isActive: blueprint.isActive,
+    createdAt: dateIso(blueprint.createdAt),
+    updatedAt: dateIso(blueprint.updatedAt),
+  };
+}
+
+function comparableSection(section: {
+  id: string;
+  blueprintId: string;
+  sectionCode: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  sectionRole: string | null;
+  fixedContent: string[];
+  fields: string[];
+  completionPrompt: string | null;
+  required: boolean;
+  minimumContentExpectation: string | null;
+  evidenceRequirements: Record<string, unknown>;
+  allowedSourceTypes: string[];
+  prohibitedAssumptions: string[];
+  validationRules: unknown[];
+  qualityCriteria: unknown[];
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): Record<string, unknown> {
+  return {
+    id: section.id,
+    blueprintId: section.blueprintId,
+    sectionCode: section.sectionCode,
+    title: section.title,
+    description: section.description,
+    instructions: section.instructions,
+    sectionRole: section.sectionRole,
+    fixedContent: section.fixedContent,
+    fields: section.fields,
+    completionPrompt: section.completionPrompt,
+    required: section.required,
+    minimumContentExpectation: section.minimumContentExpectation,
+    evidenceRequirements: section.evidenceRequirements,
+    allowedSourceTypes: section.allowedSourceTypes,
+    prohibitedAssumptions: section.prohibitedAssumptions,
+    validationRules: section.validationRules,
+    qualityCriteria: section.qualityCriteria,
+    sortOrder: section.sortOrder,
+    createdAt: dateIso(section.createdAt),
+    updatedAt: dateIso(section.updatedAt),
+  };
+}
+
 describe("scoped registry blueprint publisher", () => {
   it("targets exactly one platform blueprint code and updates by row identity", () => {
     const publisher = scopedPublisherSource();
@@ -41,7 +171,7 @@ describe("scoped registry blueprint publisher", () => {
   it("dry-run returns the diff before any write path executes", () => {
     const publisher = scopedPublisherSource();
     const dryRunIndex = publisher.indexOf("if (dryRun)");
-    const firstBlueprintUpdate = publisher.indexOf("await db\n    .update(workBlueprintsTable)");
+    const firstBlueprintUpdate = publisher.indexOf(".update(workBlueprintsTable)");
     const firstSectionDelete = publisher.indexOf("await db\n      .delete(blueprintSectionsTable)");
 
     expect(dryRunIndex).toBeGreaterThanOrEqual(0);
@@ -68,7 +198,7 @@ describe("scoped registry blueprint publisher", () => {
 
   it("round-trips care_plan publish and verified rollback artifact without touching other registry entries", async () => {
     process.env.DATABASE_URL ??= "postgres://unit:test@localhost:5432/unit";
-    const artifactPath = "/tmp/needsops-blueprint-reconstruction/care_plan-defa6d1a-verified-rollback-with-metadata.json";
+    const artifactPath = resolve(ROOT, "artifacts/api-server/src/__fixtures__/blueprints/care_plan-live-prestate-2026-10-29.json");
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
     const {
       buildScopedBlueprintRestorePlan,
@@ -90,6 +220,13 @@ describe("scoped registry blueprint publisher", () => {
       now: new Date("2026-10-28T00:00:00.000Z"),
     });
     expect(publishPlan.nextContentHash).toBe("sha256:5433caaf541b58606a7f2e5dbfc90d3d6883b3cba36cc7176bfc797d2800bfa3");
+    expect(Object.keys(publishPlan.diff.blueprint)).toEqual(["contentHash"]);
+    expect(publishPlan.diff.sections.filter((section) => section.action === "update").map((section) => section.sectionCode).sort()).toEqual([
+      "CLIENT_ENDORSEMENT",
+      "HISTORY_BACKGROUND",
+      "UNDERTAKING_ADL",
+    ]);
+    expect(publishPlan.diff.sections.filter((section) => section.action !== "unchanged")).toHaveLength(3);
 
     const restorePlan = buildScopedBlueprintRestorePlan({
       currentBlueprint: publishPlan.nextBlueprint,
@@ -102,47 +239,12 @@ describe("scoped registry blueprint publisher", () => {
     expect(restorePlan.nextContentHash).toBe("sha256:b825528b9a95744f2bf265108e9aec998e7c3b76bbf4d3bb3522ef3af97dadd2");
     expect(restorePlan.blueprintId).toBe(verifiedPreState.blueprint.id);
     expect(restorePlan.nextSections).toHaveLength(14);
-    expect(restorePlan.nextSections.map((section) => section.id).sort()).toEqual(
-      verifiedPreState.sections.map((section) => section.id).sort(),
-    );
+    expect(comparableBlueprint(restorePlan.nextBlueprint)).toEqual(comparableBlueprint(verifiedPreState.blueprint));
+    expect(restorePlan.nextSections.map((section) => section.id).sort()).toEqual(verifiedPreState.sections.map((section) => section.id).sort());
     for (const restoredSection of restorePlan.nextSections) {
       const originalSection = verifiedPreState.sections.find((section) => section.id === restoredSection.id);
       expect(originalSection).toBeTruthy();
-      expect({
-        sectionCode: restoredSection.sectionCode,
-        title: restoredSection.title,
-        description: restoredSection.description,
-        instructions: restoredSection.instructions,
-        sectionRole: restoredSection.sectionRole,
-        fixedContent: restoredSection.fixedContent,
-        fields: restoredSection.fields,
-        completionPrompt: restoredSection.completionPrompt,
-        required: restoredSection.required,
-        minimumContentExpectation: restoredSection.minimumContentExpectation,
-        evidenceRequirements: restoredSection.evidenceRequirements,
-        allowedSourceTypes: restoredSection.allowedSourceTypes,
-        prohibitedAssumptions: restoredSection.prohibitedAssumptions,
-        validationRules: restoredSection.validationRules,
-        qualityCriteria: restoredSection.qualityCriteria,
-        sortOrder: restoredSection.sortOrder,
-      }).toEqual({
-        sectionCode: originalSection!.sectionCode,
-        title: originalSection!.title,
-        description: originalSection!.description,
-        instructions: originalSection!.instructions,
-        sectionRole: originalSection!.sectionRole,
-        fixedContent: originalSection!.fixedContent,
-        fields: originalSection!.fields,
-        completionPrompt: originalSection!.completionPrompt,
-        required: originalSection!.required,
-        minimumContentExpectation: originalSection!.minimumContentExpectation,
-        evidenceRequirements: originalSection!.evidenceRequirements,
-        allowedSourceTypes: originalSection!.allowedSourceTypes,
-        prohibitedAssumptions: originalSection!.prohibitedAssumptions,
-        validationRules: originalSection!.validationRules,
-        qualityCriteria: originalSection!.qualityCriteria,
-        sortOrder: originalSection!.sortOrder,
-      });
+      expect(comparableSection(restoredSection)).toEqual(comparableSection(originalSection!));
     }
 
     const registryCodes = new Set(BLUEPRINT_REGISTRY.map((registryEntry) => registryEntry.code));
@@ -153,7 +255,7 @@ describe("scoped registry blueprint publisher", () => {
 
   it("fails closed for corrupted restore artifacts and wrong blueprint names", async () => {
     process.env.DATABASE_URL ??= "postgres://unit:test@localhost:5432/unit";
-    const artifactPath = "/tmp/needsops-blueprint-reconstruction/care_plan-defa6d1a-verified-rollback-with-metadata.json";
+    const artifactPath = resolve(ROOT, "artifacts/api-server/src/__fixtures__/blueprints/care_plan-live-prestate-2026-10-29.json");
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
     const {
       buildScopedBlueprintRestorePlan,
@@ -161,7 +263,7 @@ describe("scoped registry blueprint publisher", () => {
     } = await import("../services/workBlueprintService.js");
 
     const corrupted = structuredClone(artifact);
-    corrupted.rollback.sections[0].title = `${corrupted.rollback.sections[0].title} corrupted`;
+    corrupted.sections[0].title = `${corrupted.sections[0].title} corrupted`;
     expect(() => readVerifiedScopedBlueprintRestoreArtifact(corrupted)).toThrow(/hash mismatch/i);
 
     const verifiedPreState = readVerifiedScopedBlueprintRestoreArtifact(artifact);
