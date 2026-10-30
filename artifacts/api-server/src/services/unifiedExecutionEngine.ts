@@ -4035,9 +4035,6 @@ function plainCompletionFailure(failure: BlueprintRuntimeGateFailure): string {
   }
   if (failure.gate === "mechanical_gate") {
     const joined = (failure.details ?? []).join(" ");
-    if (/care_plan_history_not_clinical_case_history/i.test(joined)) {
-      return "The history section contains clinical detail that should not be in a worker-facing plan.";
-    }
     if (/care_plan_review_date_later_than_plan_date/i.test(joined)) {
       return "The review date is missing or is not later than the plan date.";
     }
@@ -4067,7 +4064,6 @@ function plainCompletionFailure(failure: BlueprintRuntimeGateFailure): string {
 function plainCompletionFailureDetail(detail: string): string {
   return humaniseCarePlanIdentifiers(
     detail
-      .replace(/\bcare_plan_history_not_clinical_case_history\b/gi, "history section contains clinical detail")
       .replace(/\bcare_plan_review_date_later_than_plan_date\b/gi, "review date must be later than the plan date")
       .replace(/\bmandatory_deliverable_coverage\b/gi, "required content coverage")
       .replace(/\btargeted_repair_skipped\b/gi, "automatic repair was unavailable")
@@ -5986,7 +5982,6 @@ const CARE_PLAN_BATCHES: CarePlanBatch[] = [
     requirementIds: [
       "care-plan-support-plan-meeting",
       "care-plan-about-me",
-      "care-plan-history-background",
     ],
   },
   {
@@ -7341,7 +7336,6 @@ function carePlanRequirementHeading(requirementId: string): string {
     "care-plan-support-plan-meeting": "Support Plan Meeting",
     "care-plan-goals": "Goals",
     "care-plan-about-me": "About Me",
-    "care-plan-history-background": "History and Background",
     "care-plan-undertaking-adl": "Undertaking ADL",
     "care-plan-communication-strategy": "Communication and Communication Strategy",
     "care-plan-mobility-strategy": "Mobility and Mobility Strategy",

@@ -3228,11 +3228,6 @@ function carePlanDomainSufficiency(requirementId: string, normalised: string): {
       partial: count(["strength", "likes", "dislikes", "matters", "communicat", "informal support"]) > 0,
       reason: "About Me must describe the person using participant-specific preferences, strengths or supports from evidence.",
     },
-    "care-plan-history-background": {
-      passed: sourceBacked && count(["history", "background", "service", "risk", "context", "source"]) >= 3,
-      partial: sourceBacked || count(["history", "background", "service", "risk", "context"]) > 1,
-      reason: "History and Background must contain operationally relevant history or risk context traceable to named evidence.",
-    },
     "care-plan-undertaking-adl": {
       passed: workerAction && count(["independent", "prompt", "supervision", "personal hygiene", "groom", "adl", "daily"]) >= 2,
       partial: workerAction || count(["independent", "prompt", "supervision", "adl", "daily"]) > 0,

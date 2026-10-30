@@ -114,7 +114,6 @@ const CARE_PLAN_TEMPLATE_CONTENT = [
   "Support Plan Meeting",
   "Goals",
   "About Me",
-  "History and Background",
   "Undertaking ADL",
   "Communication and Communication Strategy",
   "Mobility and Mobility Strategy",

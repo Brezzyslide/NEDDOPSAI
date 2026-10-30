@@ -1042,13 +1042,6 @@ function validateCarePlanMechanicalRules(
   if (participantSpecific) {
     failures.push(...validateCarePlanCrossSectionConsistency(sections, deliverableSections));
 
-    const history = sectionByRequirementId("care-plan-history-background", /\bhistory and background\b/i);
-    if (history && containsClinicalCaseHistory(history.body)) {
-      failures.push(mechanicalFailure(
-        "care_plan_history_not_clinical_case_history",
-        "History and Background contains clinical/life-course case-history material; it must carry only worker-relevant background needed for safe support.",
-      ));
-    }
   }
 
   for (const [rule, requirementId, pattern] of [
@@ -1467,12 +1460,6 @@ function hasSelectedSupportWithoutDescription(content: string): boolean {
     if (afterSeparator.length < 8) return true;
   }
   return false;
-}
-
-function containsClinicalCaseHistory(content: string): boolean {
-  return /\b(?:from infancy|in infancy|early childhood|school years|during school|family psychiatric history|forensic history|trauma history|case history|clinical history)\b/i.test(content) ||
-    /\b(?:hyperactive|short attention span|oppositional behaviour|self-harm|property damage)\b/i.test(content) &&
-      /\b(?:infancy|childhood|school|history|reported)\b/i.test(content);
 }
 
 function normaliseRuntimeText(value: string): string {

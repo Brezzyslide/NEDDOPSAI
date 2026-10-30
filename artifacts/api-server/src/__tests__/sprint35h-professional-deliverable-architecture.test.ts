@@ -1345,7 +1345,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(result.issues.some(issue => issue.rule === "participant_context_present" && issue.level === "info")).toBe(true);
   });
 
-  it("gives Care Plan CREATE final synthesis the authored fourteen-section user-facing structure", () => {
+  it("gives Care Plan CREATE final synthesis the authored thirteen-section user-facing structure", () => {
     const context = compileProfessionalExecutionContext({
       userRequest: "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.",
       manifest: manifest({
@@ -1369,13 +1369,12 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(context.operation).toBe("CREATE");
     expect(context.deliverable.requestedDeliverableType).toBe("STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE");
     expect(context.professionalMethodRole).toBe("internal_method_only");
-    expect(carePlan.sections).toHaveLength(14);
+    expect(carePlan.sections).toHaveLength(13);
     expect(carePlan.sections.every((section: any) => section.sectionRole === "user_facing")).toBe(true);
     expect(carePlan.sections.map((section: any) => section.sectionCode)).toEqual([
       "SUPPORT_PLAN_MEETING",
       "GOALS",
       "ABOUT_ME",
-      "HISTORY_BACKGROUND",
       "UNDERTAKING_ADL",
       "COMMUNICATION_STRATEGY",
       "MOBILITY_STRATEGY",
@@ -1388,7 +1387,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "DOCUMENT_CONTROL",
     ]);
     expect((supportPlan.sections ?? []).some((section: any) => Object.prototype.hasOwnProperty.call(section, "sectionRole"))).toBe(false);
-    expect(carePlan.deliverableContract.requirementPlan).toHaveLength(14);
+    expect(carePlan.deliverableContract.requirementPlan).toHaveLength(13);
     expect(carePlan.deliverableContract.requirementPlan[0]).toMatchObject({
       id: "care-plan-support-plan-meeting",
       targetLocation: "Support Plan Meeting (header)",
@@ -1399,18 +1398,18 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(carePlan.sections.every((section: any) => (section.fixedContent ?? []).length > 0)).toBe(true);
     expect(carePlan.sections.every((section: any) => (section.fields ?? []).length > 0)).toBe(true);
     expect(carePlan.sections.every((section: any) => Boolean(section.completionPrompt))).toBe(true);
-    expect(carePlan.sections[8].fixedContent).toContain("These strategies are derived from the behaviour support plan and grouped for operational use. They are confirmed by the provider's Authorised Program Officer before this plan is approved, and reviewed whenever the behaviour support plan changes.");
-    expect(carePlan.sections[8].fields).toEqual([
+    expect(carePlan.sections[7].fixedContent).toContain("These strategies are derived from the behaviour support plan and grouped for operational use. They are confirmed by the provider's Authorised Program Officer before this plan is approved, and reviewed whenever the behaviour support plan changes.");
+    expect(carePlan.sections[7].fields).toEqual([
       "Proactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
       "Reactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
       "Protective strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
     ]);
+    expect(carePlan.sections[8].fixedContent.join("\n")).not.toContain("Non-applicability wording:");
     expect(carePlan.sections[9].fixedContent.join("\n")).not.toContain("Non-applicability wording:");
-    expect(carePlan.sections[10].fixedContent.join("\n")).not.toContain("Non-applicability wording:");
-    expect(carePlan.sections[10].completionPrompt).toContain("use this paragraph instead of the strategy fields");
-    expect(carePlan.sections[12].fixedContent.join("\n")).toContain("completed only when the participant or authorised representative has reviewed the plan");
-    expect(carePlan.sections[12].fixedContent.join("\n")).not.toContain("I have been involved in the development of this Care Plan.");
-    expect(carePlan.sections[13].completionPrompt).toBe("Record the form ID, version and date. The review date must match the date recorded in the plan header.");
+    expect(carePlan.sections[9].completionPrompt).toContain("Where retrieved evidence confirms no hands-on mealtime strategy is required");
+    expect(carePlan.sections[11].fixedContent.join("\n")).toContain("completed only when the participant or authorised representative has reviewed the plan");
+    expect(carePlan.sections[11].fixedContent.join("\n")).not.toContain("I have been involved in the development of this Care Plan.");
+    expect(carePlan.sections[12].completionPrompt).toBe("Record the form ID, version and date. The review date must match the date recorded in the plan header.");
 
     const src = source("services/unifiedExecutionEngine.ts");
     expect(src).toContain("Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server");
@@ -1435,7 +1434,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("Every mandatory user-facing section must contain substantive professional prose");
   });
 
-  it("uses a participant-specific care-plan contract that forbids placeholder tokens and requires all fourteen sections", () => {
+  it("uses a participant-specific care-plan contract that forbids placeholder tokens and requires all thirteen sections", () => {
     const carePlan = getRegistryEntry("care_plan") as any;
     const context = compileProfessionalExecutionContext({
       userRequest: "Create a Care Plan for Micheal Rocca.",
@@ -1759,7 +1758,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
 
-    expect(profile.requirements).toHaveLength(14);
+    expect(profile.requirements).toHaveLength(13);
     expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length > 0)).toBe(true);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-support-plan-meeting")?.completionFields)
       .toEqual(["Plan date", "Date for review"]);
@@ -2156,7 +2155,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
     const prompt = formatRequirementCoveragePrompt(profile);
 
-    expect(profile.requirements).toHaveLength(14);
+    expect(profile.requirements).toHaveLength(13);
     expect(profile.requirements.every((requirement) => requirement.origin === "AUTHORED")).toBe(true);
     expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length > 0)).toBe(true);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-document-control")?.completionFields)
@@ -2169,7 +2168,6 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "care-plan-support-plan-meeting",
       "care-plan-goals",
       "care-plan-about-me",
-      "care-plan-history-background",
       "care-plan-undertaking-adl",
       "care-plan-communication-strategy",
       "care-plan-mobility-strategy",
@@ -2616,7 +2614,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const restrictivePractices = assembly.sections.find((section) => section.requirementId === "care-plan-restrictive-practices");
     const aboutMe = assembly.sections.find((section) => section.requirementId === "care-plan-about-me");
 
-    expect(assembly.sections).toHaveLength(14);
+    expect(assembly.sections).toHaveLength(13);
     expect(assembly.deterministicCompleteness.fixedContentComplete).toBe(true);
     expect(assembly.deterministicCompleteness.goalRowCount).toBe(3);
     expect(meeting?.content).toContain("This plan describes the supports to be delivered to the participant");
@@ -2692,7 +2690,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(aboutMe?.content.trim()).toMatch(/> \*Guidance: Write in the participant's own words where possible/);
 
     const markdown = assembleDeliverableMarkdownFromSections(assembly.sections);
-    expect(markdown.match(/^> \*Guidance:/gm)).toHaveLength(14);
+    expect(markdown.match(/^> \*Guidance:/gm)).toHaveLength(13);
     expect(markdown).not.toContain("Non-applicability wording:");
     expect(markdown).not.toContain("\n\nRecord every person who attended the planning meeting");
   });
@@ -3456,8 +3454,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       .filter((failure) => failure.gate === "mechanical_gate")
       .flatMap((failure) => failure.details ?? []);
 
-    expect(coverage.totalApplicableRequirements).toBe(14);
-    expect(coverage.satisfiedCount).toBe(14);
+    expect(coverage.totalApplicableRequirements).toBe(13);
+    expect(coverage.satisfiedCount).toBe(13);
     expect(coverage.missing).toHaveLength(0);
     expect(coverage.coveragePercentage).toBe(100);
     expect(runtime.failures.map((failure) => failure.gate).sort()).toEqual(["approval_required", "artifact_required"]);
@@ -3501,7 +3499,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       .toEqual(expect.arrayContaining([expect.stringContaining("care_plan_identity_language_consistency")]));
   });
 
-  it("blocks clinical case-history material in care-plan History and Background", () => {
+  it("does not include the removed History and Background care-plan gate", () => {
     const blueprint = getRegistryEntry("care_plan") as any;
     const contract = { blueprint, sections: blueprint.sections ?? [], template: null, mode: "create" } as BlueprintExecutionContract;
     const professionalContext = compileProfessionalExecutionContext({
@@ -3522,7 +3520,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
 
     expect(runtime.failures.flatMap((failure) => failure.details ?? []))
-      .toEqual(expect.arrayContaining([expect.stringContaining("care_plan_history_not_clinical_case_history")]));
+      .not.toEqual(expect.arrayContaining([expect.stringContaining("care_plan_history_not_clinical_case_history")]));
   });
 
   it("keeps Disaster Management server-derived fields as the only source of truth", () => {
@@ -3577,8 +3575,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(professionalContext.specificity).toBe("STANDARD_NON_PARTICIPANT_SPECIFIC");
     expect(professionalContext.deliverable.standardisation).toBe("standard_reusable");
-    expect(assembly.sections).toHaveLength(14);
-    expect(modelWordCounts).toHaveLength(14);
+    expect(assembly.sections).toHaveLength(13);
+    expect(modelWordCounts).toHaveLength(13);
     expect(modelWordCounts.every((section) => section.wordCount === 0)).toBe(true);
     expect(modelWordCounts.reduce((sum, section) => sum + section.wordCount, 0)).toBe(0);
   });

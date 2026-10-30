@@ -219,14 +219,17 @@ describe("scoped registry blueprint publisher", () => {
       entry: entry!,
       now: new Date("2026-10-28T00:00:00.000Z"),
     });
-    expect(publishPlan.nextContentHash).toBe("sha256:5433caaf541b58606a7f2e5dbfc90d3d6883b3cba36cc7176bfc797d2800bfa3");
-    expect(Object.keys(publishPlan.diff.blueprint)).toEqual(["contentHash"]);
+    expect(publishPlan.nextContentHash).toBe("sha256:f3d4021683e9c0b158647379acaa898c1d642af2b7e606655ed93936f35c0aae");
+    expect(Object.keys(publishPlan.diff.blueprint).sort()).toEqual(["contentHash", "deliverableContract", "evidenceContract"]);
     expect(publishPlan.diff.sections.filter((section) => section.action === "update").map((section) => section.sectionCode).sort()).toEqual([
+      "ABOUT_ME",
       "CLIENT_ENDORSEMENT",
-      "HISTORY_BACKGROUND",
+      "MEALTIME_MANAGEMENT_STRATEGY",
+      "RESTRICTIVE_PRACTICES",
       "UNDERTAKING_ADL",
     ]);
-    expect(publishPlan.diff.sections.filter((section) => section.action !== "unchanged")).toHaveLength(3);
+    expect(publishPlan.diff.sections.filter((section) => section.action === "delete").map((section) => section.sectionCode)).toEqual(["HISTORY_BACKGROUND"]);
+    expect(publishPlan.diff.sections.filter((section) => section.action !== "unchanged")).toHaveLength(6);
 
     const restorePlan = buildScopedBlueprintRestorePlan({
       currentBlueprint: publishPlan.nextBlueprint,

@@ -3079,7 +3079,6 @@ const CARE_PLAN_AUTHORITY_BOUNDARY = [
 ];
 
 const CARE_PLAN_OPEN_ITEMS = [
-  "History and Background (4.4): access restriction given its content?",
   "Disaster management (4.12): settings other than SIL, supported accommodation and community access?",
   "Emergency contacts: this document or the intake form?",
   "Decision-making capacity, guardian or nominee: recorded here or elsewhere?",
@@ -3091,7 +3090,7 @@ const CARE_PLAN_DOCUMENT_TO_SECTIONS = [
   { documentType: "Intake form", requiredWhen: "always", feeds: ["SUPPORT_PLAN_MEETING", "UNDERTAKING_ADL", "COMMUNICATION_STRATEGY", "MOBILITY_STRATEGY", "SUPPORT_DELIVERY_CLIENT_SAFETY"] },
   { documentType: "Service agreement", requiredWhen: "always", feeds: ["SUPPORT_DELIVERY_CLIENT_SAFETY"] },
   { documentType: "Behaviour support plan", requiredWhen: "where one exists", feeds: ["BEHAVIOURAL_MANAGEMENT", "RESTRICTIVE_PRACTICES", "COMMUNICATION_STRATEGY", "GOALS"] },
-  { documentType: "Allied health reports", requiredWhen: "where relevant supports claimed", feeds: ["GOALS", "COMMUNICATION_STRATEGY", "MOBILITY_STRATEGY", "UNDERTAKING_ADL", "HISTORY_BACKGROUND"] },
+  { documentType: "Allied health reports", requiredWhen: "where relevant supports claimed", feeds: ["GOALS", "COMMUNICATION_STRATEGY", "MOBILITY_STRATEGY", "UNDERTAKING_ADL"] },
   { documentType: "Mealtime management risk assessment", requiredWhen: "always", feeds: ["MEALTIME_MANAGEMENT_STRATEGY"] },
   { documentType: "Disaster management risk assessment", requiredWhen: "SIL and supported accommodation", feeds: ["DISASTER_MANAGEMENT_STRATEGY"] },
   { documentType: "Community access risk assessment", requiredWhen: "community access participants", feeds: ["DISASTER_MANAGEMENT_STRATEGY"] },
@@ -3140,21 +3139,8 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
       "Strengths stated",
       "Likes and dislikes stated",
       "Informal supports identified",
-      "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+      "Forensic history, family psychiatric history, trauma and service-involvement history are not included in this worker-facing About Me section",
       "Written about the person, not about their deficits",
-    ],
-  },
-  {
-    id: "care-plan-history-background",
-    sectionCode: "HISTORY_BACKGROUND",
-    requirementText: "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
-    classification: "MUST_BE_REPRESENTED" as const,
-    targetLocation: "History and Background",
-    adequacyCriteria: [
-      "Carries only what a support worker operationally needs. Not the full file",
-      "Every historical claim traceable to a named source document",
-      "No clinical interpretation added beyond what the source states",
-      "[OPEN] Should this section state an access restriction, given its content?",
     ],
   },
   {
@@ -3304,7 +3290,6 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
 
 const CARE_PLAN_FOUNDER_AUTHORING_GAPS = [
   "Support Plan Meeting (header): review cycle requirement",
-  "History and Background: confidentiality statement for sensitive history",
   "Undertaking ADL: the ADL activity list to be used",
   "Mobility and Mobility Strategy: manual handling and equipment check requirements",
   "Support Delivery and Client Safety: worker screening and orientation requirements",
@@ -3334,14 +3319,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift.",
     ],
     fields: ["Strengths", "Likes", "Dislikes", "What matters to me", "How I prefer to communicate", "People who matter to me", "Informal supports"],
-    completionPrompt: "Write in the participant's own words where possible. Record what they enjoy, what they find difficult, and what a good day looks like for them. History, diagnoses and risk information belong in History and Background, not here.",
-  },
-  historyBackground: {
-    fixedContent: [
-      "This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document.",
-    ],
-    fields: ["Relevant history", "Prior service involvement", "Risk-relevant context", "Source documents and dates"],
-    completionPrompt: "Include only what changes how a worker should deliver support on shift. Before adding any history, ask whether a worker would act differently because of it; if not, leave it out. Do not write life-course, childhood, forensic, trauma, family psychiatric or clinical case-history narrative. Name the source document and date for each statement.",
+    completionPrompt: "Write in the participant's own words where possible. Record what they enjoy, what they find difficult, and what a good day looks like for them. Do not include clinical, forensic, trauma or family psychiatric history.",
   },
   undertakingAdl: {
     fixedContent: [
@@ -3407,7 +3385,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "Using a regulated restrictive practice that is not listed here, or using a listed practice differently from how it is described, is an unauthorised restrictive practice. It is a reportable incident and must be reported immediately.",
     ],
     fields: ["Table with columns Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement"],
-    completionPrompt: "Name each authorised practice in plain language, state what the worker does and does not do, and record the authorisation reference from the behaviour support plan. Where none are in place, use this paragraph instead of the table: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager.",
+    completionPrompt: "Name each authorised practice in plain language, state what the worker does and does not do, and record the authorisation reference from the behaviour support plan. Where retrieved evidence confirms no restrictive practices are authorised or in use, state that plainly, name the source document title and date supporting the statement, and tell workers not to use any restrictive practice. Do not state non-applicability unless the retrieved evidence supports it. If a situation arises where a restrictive practice appears necessary, contact the on-call service manager.",
   },
   mealtimeManagementStrategy: {
     fixedContent: [
@@ -3415,7 +3393,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "Assessment of swallowing, dysphagia risk and texture modification is made only by an appropriately credentialed professional. This plan carries the resulting strategy; it does not make the assessment.",
     ],
     fields: ["Source risk assessment and date", "Food texture", "Fluid consistency", "Positioning", "Supervision level", "Equipment", "Worker actions"],
-    completionPrompt: "Record the strategy exactly as set out in the mealtime management risk assessment. Where no hands-on strategy is required, use this paragraph instead of the strategy fields: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.",
+    completionPrompt: "Record the strategy exactly as set out in the mealtime management risk assessment. Where retrieved evidence confirms no hands-on mealtime strategy is required, state that plainly, name the assessment title and date supporting the statement, describe the support type that does apply, and tell workers to report any change in eating or drinking to the service manager. Do not state non-applicability unless the retrieved evidence supports it.",
   },
   disasterManagementStrategy: {
     fixedContent: [
@@ -3547,8 +3525,7 @@ const CARE_PLAN_SECTIONS = [
       nonApplicabilityTerms: ["not recorded", "no NDIS plan", "goal not recorded"],
     },
   }),
-  carePlanUserSection("ABOUT_ME", "About Me", "The person — strengths, likes, dislikes, what matters to them, communication preferences, informal supports.", "Write about the person, not their deficits. Forensic history, family psychiatric history, trauma and service-involvement history do not belong here.", 30, ["strengths_based_questionnaire", "participant_voice"], undefined, CARE_PLAN_TEMPLATE_CONTENT.aboutMe),
-  carePlanUserSection("HISTORY_BACKGROUND", "History and Background", "Background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.", "Carry only what a support worker operationally needs. Every historical claim must be traceable to a named source document. Do not add clinical interpretation beyond the source.", 40, ["allied_health_report", "behaviour_support_plan", "intake_form"], undefined, CARE_PLAN_TEMPLATE_CONTENT.historyBackground),
+  carePlanUserSection("ABOUT_ME", "About Me", "The person — strengths, likes, dislikes, what matters to them, communication preferences, informal supports.", "Write about the person, not their deficits. Do not include clinical, forensic, trauma or family psychiatric history.", 30, ["strengths_based_questionnaire", "participant_voice"], undefined, CARE_PLAN_TEMPLATE_CONTENT.aboutMe),
   carePlanUserSection("UNDERTAKING_ADL", "Undertaking ADL", "Personal grooming capacity and self-hygiene routine.", "State what the participant does independently, what needs prompting and what needs hands-on support.", 50, ["intake_form", "ot_assessment"], undefined, {
     ...CARE_PLAN_TEMPLATE_CONTENT.undertakingAdl,
     retrievalVocabulary: {

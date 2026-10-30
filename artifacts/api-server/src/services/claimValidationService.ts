@@ -892,7 +892,6 @@ const PARTICIPANT_CLAIM_GUARDED_CARE_PLAN_SECTION_IDS = new Set([
   "care-plan-support-plan-meeting",
   "care-plan-goals",
   "care-plan-about-me",
-  "care-plan-history-background",
   "care-plan-communication-strategy",
   "care-plan-mobility-strategy",
   "care-plan-support-delivery-client-safety",
