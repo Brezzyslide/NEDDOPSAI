@@ -30,6 +30,7 @@ import {
   assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
   applyParticipantCarePlanClaimGuard,
+  collectCarePlanGeneratedEvidencePackMismatches,
   collectParticipantCarePlanSuppressionRecords,
   mergeDeliverableSectionDeltas,
   normaliseCarePlanDeclaredInstrumentSection,
@@ -1575,10 +1576,11 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("providerFailureKind: extractGatewayProviderFailureKind(error)");
     expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
     expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
-    expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason)");
+    expect(src).toContain("appendCarePlanBatchSections(");
+    expect(src).toContain("buildFailedBatchSections(batch, reason)");
     expect(src).toContain("applyServerDerivedCarePlanSectionCells(section,");
-    expect(src).toContain("input.evidencePack");
-    expect(src).toContain("input.blueprintContract");
+    expect(src).toContain("batchEvidencePack");
+    expect(src).toContain("batchContract");
     expect(src).toContain("continue;");
   });
 
@@ -4078,8 +4080,84 @@ The strategies below implement the participant's behaviour support plan.
 
     expect(sourceText).toContain("function sectionScopedEvidencePackForCarePlanSection");
     expect(sourceText).toContain("const scopedEvidencePack = sectionScopedEvidencePackForCarePlanSection(section, evidencePack, contract)");
-    expect(sourceText).toContain("filterCarePlanSectionEvidenceSourcesToScopedPack");
-    expect(sourceText).toContain("allowed.has(source.chunkId)");
+    expect(sourceText).toContain("applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)");
+    expect(sourceText).toContain("generationEvidencePackByRequirementId");
+    expect(sourceText).toContain("collectCarePlanGeneratedEvidencePackMismatches");
+    expect(sourceText).not.toContain("filterCarePlanSectionEvidenceSourcesToScopedPack");
+  });
+
+  it("guards generated care-plan citations against the same evidence pack used for generation", () => {
+    const carePlan = getRegistryEntry("care_plan");
+    if (!carePlan) throw new Error("missing care_plan blueprint");
+    const requirementPlan = carePlan.deliverableContract?.requirementPlan as Array<{ id: string; title?: string }> | undefined;
+    if (!requirementPlan?.length) throw new Error("missing care_plan requirement plan");
+
+    const generatedSections = requirementPlan.map((requirement, index) => {
+      const chunkId = `generation-pack-chunk-${index + 1}`;
+      return {
+        requirementId: requirement.id,
+        heading: requirement.title ?? requirement.id,
+        content: `Generated participant claim for ${requirement.id}.`,
+        evidenceSources: [{
+          chunkId,
+          documentTitle: "Participant document",
+          passage: `Evidence passage for ${requirement.id}.`,
+          location: "Participant document, p.1",
+        }],
+      };
+    });
+    const generationPacks = new Map(generatedSections.map((section, index) => [
+      section.requirementId,
+      evidencePackWithChunk(`generation-pack-chunk-${index + 1}`, `Evidence passage for ${section.requirementId}.`),
+    ]));
+
+    expect(collectCarePlanGeneratedEvidencePackMismatches(generatedSections, generationPacks)).toEqual([]);
+
+    const missingPackSection = {
+      requirementId: "care-plan-goals",
+      heading: "Goals",
+      content: [
+        "| Current situation | Goal | Actions |",
+        "| --- | --- | --- |",
+        "| Unsupported baseline | Unsupported goal | Unsupported action |",
+      ].join("\n"),
+      evidenceSources: [{
+        chunkId: "hallucinated-chunk-id",
+        documentTitle: "Participant document",
+        passage: "Unsupported generated passage.",
+        location: "Participant document, p.2",
+      }],
+    };
+    const mismatches = collectCarePlanGeneratedEvidencePackMismatches(
+      [missingPackSection],
+      new Map([[
+        "care-plan-goals",
+        evidencePackWithChunk("different-generation-pack-chunk", "Different evidence passage."),
+      ]]),
+    );
+    expect(mismatches).toEqual([
+      {
+        requirementId: "care-plan-goals",
+        heading: "Goals",
+        chunkId: "hallucinated-chunk-id",
+        reason: "cited_chunk_not_in_generation_pack",
+      },
+    ]);
+
+    const guarded = applyParticipantCarePlanClaimGuard(
+      missingPackSection,
+      evidencePackWithChunk("different-generation-pack-chunk", "Different evidence passage."),
+    );
+    const rendered = assembleDeliverableMarkdownFromSections([guarded], ["care-plan-goals"]);
+    expect(rendered).toContain("Content not rendered because required evidence was not available");
+    expect(rendered).not.toContain("Unsupported goal");
+    expect(guarded.suppressedClaims).toEqual([
+      expect.objectContaining({
+        section: "Goals",
+        claim: "Unsupported baseline | Unsupported goal | Unsupported action",
+        reason: expect.stringContaining("hallucinated-chunk-id"),
+      }),
+    ]);
   });
 
   it("turns draft-quality completion gates into approval blockers before completed work creation", () => {

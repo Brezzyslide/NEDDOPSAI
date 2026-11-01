@@ -87,6 +87,7 @@ import {
   assembleDeliverableMarkdownFromSections,
   buildGenerationFailedDeclaredInstrumentSection,
   applyParticipantCarePlanClaimGuard,
+  collectCarePlanGeneratedEvidencePackMismatches,
   collectParticipantCarePlanSuppressionRecords,
   mergeDeliverableSectionDeltas,
   normaliseCarePlanDeclaredInstrumentSection,
@@ -3260,6 +3261,7 @@ export class UnifiedExecutionEngine {
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
     const claims: RawClaim[] = [];
     const allSections: ParsedDeliverableSection[] = [];
+    const generationEvidencePackByRequirementId = new Map<string, EvidencePack | null>();
     const batchTelemetry: Record<string, unknown>[] = [];
     const batchFailures: Array<{ batchId: string; requirementIds: string[]; reason: string }> = [];
     const forwardContext: CarePlanBatchForwardContext = {
@@ -3329,8 +3331,13 @@ export class UnifiedExecutionEngine {
         const elapsedMs = Date.now() - startedAt;
         const reason = formatCarePlanBatchProviderFailure(batch, error, elapsedMs);
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
-        allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack ?? undefined, input.blueprintContract)));
+        appendCarePlanBatchSections(
+          allSections,
+          generationEvidencePackByRequirementId,
+          buildFailedBatchSections(batch, reason)
+            .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
+          batchEvidencePack ?? null,
+        );
         batchTelemetry.push({
           batchId: batch.id,
           batchName: batch.name,
@@ -3378,8 +3385,13 @@ export class UnifiedExecutionEngine {
       if (response.usedFallback || !response.content) {
         const reason = `Batch ${batch.name} did not produce content${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
-        allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack ?? undefined, input.blueprintContract)));
+        appendCarePlanBatchSections(
+          allSections,
+          generationEvidencePackByRequirementId,
+          buildFailedBatchSections(batch, reason)
+            .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
+          batchEvidencePack ?? null,
+        );
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3387,8 +3399,13 @@ export class UnifiedExecutionEngine {
       if (response.finishReason === "length") {
         const reason = `Batch ${batch.name} stopped at the configured output limit (${outputBudget} tokens).`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
-        allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack ?? undefined, input.blueprintContract)));
+        appendCarePlanBatchSections(
+          allSections,
+          generationEvidencePackByRequirementId,
+          buildFailedBatchSections(batch, reason)
+            .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
+          batchEvidencePack ?? null,
+        );
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3397,17 +3414,27 @@ export class UnifiedExecutionEngine {
       const batchSections = (parsed.deliverableSections ?? [])
         .filter((section) => batch.requirementIds.includes(section.requirementId))
         .map(normaliseCarePlanDeclaredInstrumentSection)
-        .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack ?? undefined, input.blueprintContract));
+        .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract));
       if (batchSections.length === 0) {
         const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
-        allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack ?? undefined, input.blueprintContract)));
+        appendCarePlanBatchSections(
+          allSections,
+          generationEvidencePackByRequirementId,
+          buildFailedBatchSections(batch, reason)
+            .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
+          batchEvidencePack ?? null,
+        );
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
 
-      allSections.push(...batchSections);
+      appendCarePlanBatchSections(
+        allSections,
+        generationEvidencePackByRequirementId,
+        batchSections,
+        batchEvidencePack ?? null,
+      );
       claims.push(...parsed.claims);
       updateCarePlanForwardContext(forwardContext, batchSections);
       batchTelemetry.push({
@@ -3427,8 +3454,16 @@ export class UnifiedExecutionEngine {
       input.blueprintContract,
       orderedSections,
     );
-    const guardedSections = (finalDeliverableSections ?? orderedSections)
-      .map((section) => applyParticipantCarePlanClaimGuard(section, input.evidencePack));
+    const sectionsForGuard = finalDeliverableSections ?? orderedSections;
+    const generationEvidencePackMismatches = collectCarePlanGeneratedEvidencePackMismatches(
+      sectionsForGuard,
+      generationEvidencePackByRequirementId,
+    );
+    const guardedSections = sectionsForGuard
+      .map((section) => applyParticipantCarePlanClaimGuard(
+        section,
+        generationEvidencePackByRequirementId.get(section.requirementId) ?? null,
+      ));
     const suppressionRecords = collectParticipantCarePlanSuppressionRecords(guardedSections);
     const content = assembleDeliverableMarkdownFromSections(
       guardedSections,
@@ -3447,6 +3482,7 @@ export class UnifiedExecutionEngine {
         missing_information: batchFailures.map((failure) => failure.reason),
         batch_failures: batchFailures,
         suppressed_claims: suppressionRecords,
+        generation_evidence_pack_mismatches: generationEvidencePackMismatches,
         forward_context: forwardContext as unknown as Record<string, unknown>,
         cross_section_consistency_failures: consistencyFailures,
       },
@@ -3481,6 +3517,7 @@ export class UnifiedExecutionEngine {
         batchCount: batches.length,
         batches: batchTelemetry,
         batchFailures,
+        generationEvidencePackMismatches,
         crossSectionConsistencyFailures: consistencyFailures,
         deliverableLength: content.length,
       },
@@ -6165,6 +6202,18 @@ function narrowEvidencePackForCarePlanBatch(
   };
 }
 
+function appendCarePlanBatchSections(
+  allSections: ParsedDeliverableSection[],
+  generationEvidencePackByRequirementId: Map<string, EvidencePack | null>,
+  sections: ParsedDeliverableSection[],
+  generationEvidencePack: EvidencePack | null,
+): void {
+  for (const section of sections) {
+    allSections.push(section);
+    generationEvidencePackByRequirementId.set(section.requirementId, generationEvidencePack);
+  }
+}
+
 function groupEvidenceChunksByType(chunks: EvidencePack["chunks"]): Record<string, EvidencePack["chunks"]> {
   return chunks.reduce<Record<string, EvidencePack["chunks"]>>((acc, chunk) => {
     const key = chunk.sourceType || chunk.documentCategory || "unknown";
@@ -6199,7 +6248,7 @@ function applyServerDerivedCarePlanSectionCells(
   } else {
     derivedSection = section;
   }
-  return filterCarePlanSectionEvidenceSourcesToScopedPack(derivedSection, scopedEvidencePack);
+  return derivedSection;
 }
 
 function sectionScopedEvidencePackForCarePlanSection(
@@ -6232,18 +6281,6 @@ function sectionScopedEvidencePackForCarePlanSection(
 function requirementSectionCode(contract: BlueprintExecutionContract, requirementId: string): string | null {
   const plan = contract.blueprint.deliverableContract?.requirementPlan as Array<{ id?: string; sectionCode?: string }> | undefined;
   return plan?.find((item) => item.id === requirementId)?.sectionCode ?? null;
-}
-
-function filterCarePlanSectionEvidenceSourcesToScopedPack(
-  section: ParsedDeliverableSection,
-  evidencePack: EvidencePack | undefined,
-): ParsedDeliverableSection {
-  if (!evidencePack || !section.evidenceSources?.length) return section;
-  const allowed = new Set(evidencePack.chunks.map((chunk) => chunk.chunkId));
-  return {
-    ...section,
-    evidenceSources: section.evidenceSources.filter((source) => allowed.has(source.chunkId)),
-  };
 }
 
 type SupportPlanIdentityField =

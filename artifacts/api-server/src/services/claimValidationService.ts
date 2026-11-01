@@ -836,13 +836,55 @@ export function applyParticipantCarePlanClaimGuard(
   if (structuredRowsGuarded !== section) return structuredRowsGuarded;
   if (hasRecognisedCarePlanEvidence(section, evidencePack)) return section;
   if (isSupportedAbsenceStatement(section)) return section;
-  return suppressWholeCarePlanSection(section, extractRenderableClaims(section.content));
+  return suppressWholeCarePlanSection(section, extractRenderableClaims(section.content), evidencePack);
 }
 
 export function collectParticipantCarePlanSuppressionRecords(
   sections: ParsedDeliverableSection[] | undefined,
 ): ParsedDeliverableSuppressedClaim[] {
   return (sections ?? []).flatMap((section) => section.suppressedClaims ?? []);
+}
+
+export interface CarePlanGeneratedEvidencePackMismatch {
+  requirementId: string;
+  heading: string;
+  chunkId: string;
+  reason: "generation_pack_missing" | "cited_chunk_not_in_generation_pack";
+}
+
+export function collectCarePlanGeneratedEvidencePackMismatches(
+  sections: ParsedDeliverableSection[],
+  generationEvidencePackByRequirementId: Map<string, EvidencePack | null>,
+): CarePlanGeneratedEvidencePackMismatch[] {
+  const mismatches: CarePlanGeneratedEvidencePackMismatch[] = [];
+  for (const section of sections) {
+    const citedIds = [...new Set((section.evidenceSources ?? [])
+      .map((source) => source.chunkId.trim())
+      .filter(Boolean))];
+    if (citedIds.length === 0) continue;
+    const generationEvidencePack = generationEvidencePackByRequirementId.get(section.requirementId) ?? null;
+    if (!generationEvidencePack?.chunks?.length) {
+      mismatches.push(...citedIds.map((chunkId) => ({
+        requirementId: section.requirementId,
+        heading: section.heading,
+        chunkId,
+        reason: "generation_pack_missing" as const,
+      })));
+      continue;
+    }
+    const generationPackChunkIds = new Set(generationEvidencePack.chunks.map((chunk) => chunk.chunkId));
+    for (const chunkId of citedIds) {
+      if (!generationPackChunkIds.has(chunkId)) {
+        mismatches.push({
+          requirementId: section.requirementId,
+          heading: section.heading,
+          chunkId,
+          reason: "cited_chunk_not_in_generation_pack",
+        });
+      }
+    }
+  }
+  return mismatches;
 }
 
 export function buildGenerationFailedDeclaredInstrumentSection(
@@ -905,12 +947,16 @@ function isParticipantClaimGuardedCarePlanSection(requirementId: string): boolea
   return PARTICIPANT_CLAIM_GUARDED_CARE_PLAN_SECTION_IDS.has(requirementId);
 }
 
-function hasCitedSourceChunk(section: ParsedDeliverableSection): boolean {
-  return (section.evidenceSources ?? []).some((source) => source.chunkId.trim() && source.passage.trim());
+function hasCitedSourceChunk(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): boolean {
+  return (section.evidenceSources ?? []).some((source) =>
+    source.chunkId.trim() &&
+    source.passage.trim() &&
+    evidencePack?.chunks?.some((chunk) => chunk.chunkId === source.chunkId.trim())
+  );
 }
 
 function hasRecognisedCarePlanEvidence(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): boolean {
-  return hasCitedSourceChunk(section) || hasStructuredRowEvidence(section, evidencePack) || hasStructuredAbsenceRecord(section);
+  return hasCitedSourceChunk(section, evidencePack) || hasStructuredRowEvidence(section, evidencePack) || hasStructuredAbsenceRecord(section);
 }
 
 function hasStructuredRowEvidence(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): boolean {
@@ -1059,7 +1105,7 @@ function applyStructuredRowClaimGuard(
     suppressed.push(buildSuppressionRecord(
       section.heading,
       structuredRowClaim(row),
-      "No supporting cited source chunk was provided for this participant-attributed claim.",
+      unsupportedStructuredRowReason(row, evidencePack),
     ));
     return suppressedStructuredRow(row);
   });
@@ -1070,6 +1116,17 @@ function applyStructuredRowClaimGuard(
     structuredRows: rows,
     suppressedClaims: [...(section.suppressedClaims ?? []), ...suppressed],
   };
+}
+
+function unsupportedStructuredRowReason(row: ParsedDeliverableStructuredRow, evidencePack: EvidencePack | null): string {
+  const chunkId = row.chunkId.trim();
+  if (!evidencePack?.chunks?.length) {
+    return "No generation evidence pack was available to verify this participant-attributed structured-row claim.";
+  }
+  if (chunkId && !evidencePack.chunks.some((chunk) => chunk.chunkId === chunkId)) {
+    return `Structured row cited chunk ${chunkId} was not present in the generation evidence pack; this is treated as fabricated or stale provenance.`;
+  }
+  return "No supporting cited source chunk was provided for this participant-attributed claim.";
 }
 
 function structuredRowClaim(row: ParsedDeliverableStructuredRow): string {
@@ -1109,10 +1166,12 @@ function classifyCarePlanRenderedStatement(
 function suppressWholeCarePlanSection(
   section: ParsedDeliverableSection,
   claims: string[],
+  evidencePack: EvidencePack | null = null,
 ): ParsedDeliverableSection {
   const suppressedClaims = claims.length ? claims : [section.content.trim()].filter(Boolean);
+  const reason = unsupportedSectionReason(section, evidencePack);
   const records = suppressedClaims.map((claim) =>
-    buildSuppressionRecord(section.heading, claim, "No supporting cited source chunk was provided for this participant-attributed claim."),
+    buildSuppressionRecord(section.heading, claim, reason),
   );
   return {
     ...section,
@@ -1120,6 +1179,24 @@ function suppressWholeCarePlanSection(
     structuredRows: [],
     suppressedClaims: [...(section.suppressedClaims ?? []), ...records],
   };
+}
+
+function unsupportedSectionReason(section: ParsedDeliverableSection, evidencePack: EvidencePack | null): string {
+  const citedIds = [...new Set((section.evidenceSources ?? [])
+    .map((source) => source.chunkId.trim())
+    .filter(Boolean))];
+  if (!citedIds.length) {
+    return "No supporting cited source chunk was provided for this participant-attributed claim.";
+  }
+  if (!evidencePack?.chunks?.length) {
+    return "No generation evidence pack was available to verify the cited participant-attributed claim.";
+  }
+  const packIds = new Set(evidencePack.chunks.map((chunk) => chunk.chunkId));
+  const missingIds = citedIds.filter((chunkId) => !packIds.has(chunkId));
+  if (missingIds.length) {
+    return `Cited chunk id(s) ${missingIds.join(", ")} were not present in the generation evidence pack; this is treated as fabricated or stale provenance.`;
+  }
+  return "No supporting cited source chunk was provided for this participant-attributed claim.";
 }
 
 function buildSuppressionRecord(section: string, claim: string, reason: string): ParsedDeliverableSuppressedClaim {
