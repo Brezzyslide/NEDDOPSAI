@@ -21,6 +21,7 @@ import {
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
 } from "../services/deliverableRequirementCoverageService";
+import { CARE_PLAN_ADL_CANONICAL_ROWS, type CarePlanAdlStructuredRow } from "../services/carePlanAdlModel";
 import { validateOpenAIStructuredOutputStrictSchema } from "../services/openAIStructuredOutputSchemaValidationService";
 import { validateWorkPackage } from "../services/workValidationService";
 import type { EvidencePack } from "../services/knowledgeResolutionService";
@@ -112,6 +113,50 @@ function evidencePackWithChunk(chunk: Partial<EvidencePack["chunks"][number]> & 
     sourceIds: ["source-1"],
     totalChunks: 1,
   };
+}
+
+function adlRowsWithSupportedActivities(
+  supported: CarePlanAdlStructuredRow[],
+): CarePlanAdlStructuredRow[] {
+  const byActivity = new Map(supported.map((row) => [row.activity, row]));
+  return CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => byActivity.get(activity) ?? {
+    activity,
+    supportLevel: "Not applicable / not assessed",
+    workerDescription: "No ADL support-level evidence was found for this activity in the retrieved intake or functional-assessment evidence.",
+    sourceValue: "",
+    chunkId: "",
+    mappingMode: "NOT_ASSESSED" as const,
+  });
+}
+
+function carePlanCoverageProfile() {
+  const blueprint = getRegistryEntry("care_plan");
+  if (!blueprint) throw new Error("missing care_plan blueprint");
+  const professionalContext = compileProfessionalExecutionContext({
+    userRequest: "Create a care plan for participant Alex.",
+    manifest: manifest(),
+    blueprint,
+    blueprintContract: contract(blueprint),
+  });
+  return deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+}
+
+function adlCoverageResult(
+  rows: CarePlanAdlStructuredRow[],
+  evidencePack?: EvidencePack,
+) {
+  const profile = carePlanCoverageProfile();
+  const content = "Structured ADL rows supplied.";
+  const report = evaluateDeliverableRequirementCoverage(`## Undertaking ADL\n\n${content}`, profile, {
+    deliverableSections: [{
+      requirementId: "care-plan-undertaking-adl",
+      heading: "Undertaking ADL",
+      content,
+      structuredRows: rows,
+    }],
+    evidencePack,
+  });
+  return report.requirementResults.find((item) => item.requirementId === "care-plan-undertaking-adl");
 }
 
 function contract(blueprint: WorkBlueprint): BlueprintExecutionContract {
@@ -700,6 +745,54 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(markdown).not.toContain("Guidance provenance");
     expect(markdown).not.toContain("chunk-transfer");
     expect(markdown).not.toContain("VERIFIED_MAPPING");
+  });
+
+  it("satisfies ADL when cited activities are correct and remaining canonical rows declare no assessment", () => {
+    const result = adlCoverageResult(adlRowsWithSupportedActivities([{
+      activity: "Oral hygiene",
+      supportLevel: "Independent",
+      workerDescription: "Recorded support level: Independent.",
+      sourceValue: "Without support",
+      chunkId: "chunk-adl",
+      mappingMode: "VERIFIED_MAPPING",
+    }]), evidencePackWithChunk({
+      chunkId: "chunk-adl",
+      text: "Brush teeth: Without support.",
+    }));
+
+    expect(result?.finalResult).toBe("SATISFIED");
+  });
+
+  it("does not satisfy ADL when a support-level row lacks citation or has invalid mapping mode", () => {
+    const missingCitation = adlCoverageResult(adlRowsWithSupportedActivities([{
+      activity: "Oral hygiene",
+      supportLevel: "Independent",
+      workerDescription: "Recorded support level: Independent.",
+      sourceValue: "Without support",
+      chunkId: "",
+      mappingMode: "VERIFIED_MAPPING",
+    }]));
+    const invalidMapping = adlCoverageResult(adlRowsWithSupportedActivities([{
+      activity: "Oral hygiene",
+      supportLevel: "Independent",
+      workerDescription: "Recorded support level: Independent.",
+      sourceValue: "Without support",
+      chunkId: "chunk-adl",
+      mappingMode: "HALLUCINATED_MAPPING" as never,
+    }]), evidencePackWithChunk({
+      chunkId: "chunk-adl",
+      text: "Brush teeth: Without support.",
+    }));
+
+    expect(missingCitation?.finalResult).not.toBe("SATISFIED");
+    expect(invalidMapping?.finalResult).not.toBe("SATISFIED");
+  });
+
+  it("does not satisfy ADL when all canonical rows declare no assessment", () => {
+    const result = adlCoverageResult(adlRowsWithSupportedActivities([]));
+
+    expect(result?.finalResult).toBe("NOT_SATISFIED");
+    expect(result?.failureReason).toContain("No cited ADL support-level rows are present");
   });
 
   it("does not suppress participant claims supported by structured rows", () => {

@@ -701,15 +701,23 @@ function isCompleteEvidenceSource(source: PerRequirementEvidenceSource): boolean
 }
 
 function isCompleteStructuredRow(row: CarePlanAdlStructuredRow): boolean {
+  if (!row) return false;
+  const validMappingMode = row.mappingMode === "VERIFIED_MAPPING" ||
+    row.mappingMode === "CITED_INTERPRETATION" ||
+    row.mappingMode === "NOT_ASSESSED";
+  const declaresNoAssessment = isCarePlanAdlNoAssessmentRow(row);
   return Boolean(
     row &&
     row.activity?.trim() &&
     row.supportLevel?.trim() &&
     row.workerDescription?.trim() &&
-    row.sourceValue?.trim() &&
-    row.chunkId?.trim() &&
-    (row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION" || row.mappingMode === "NOT_ASSESSED"),
+    validMappingMode &&
+    (declaresNoAssessment || (row.sourceValue?.trim() && row.chunkId?.trim())),
   );
+}
+
+function isCarePlanAdlNoAssessmentRow(row: Pick<CarePlanAdlStructuredRow, "supportLevel" | "mappingMode">): boolean {
+  return row.mappingMode === "NOT_ASSESSED" && row.supportLevel === "Not applicable / not assessed";
 }
 
 function isCompleteEvidenceGap(gap: PerRequirementEvidenceGap): boolean {
@@ -2148,8 +2156,9 @@ function validateAdlAccountableClaim(
 ): CarePlanCitationFinding {
   const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
   if (
-    (claim.mappingMode === "NOT_ASSESSED" || claim.supportLevel === "Not applicable / not assessed") &&
-    /not-recorded-in-retrieved-evidence|generation_failed/i.test(claim.chunkId)
+    claim.mappingMode === "NOT_ASSESSED" &&
+    claim.supportLevel === "Not applicable / not assessed" &&
+    (!claim.chunkId.trim() || /not-recorded-in-retrieved-evidence|generation_failed/i.test(claim.chunkId))
   ) {
     return {
       requirementId,
@@ -2742,11 +2751,11 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
   const supportLevelFailures: string[] = [];
   const citationFailures: string[] = [];
   const unverifiedRows: string[] = [];
+  let citedRowCount = 0;
 
   for (const activity of CARE_PLAN_ADL_CANONICAL_ROWS) {
     const row = byActivity.get(normaliseCarePlanAdlActivity(activity));
     if (!row) continue;
-    if (!row.chunkId.trim()) citationFailures.push(`${activity}: missing chunkId`);
     if (!isCarePlanAdlSupportLevel(row.supportLevel)) {
       supportLevelFailures.push(`${activity}: unsupported level "${row.supportLevel}"`);
       continue;
@@ -2755,6 +2764,12 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
       supportLevelFailures.push(`${activity}: ${row.absenceRecord.verificationStatus} must be reviewed before approval`);
       continue;
     }
+    if (isCarePlanAdlNoAssessmentRow(row)) {
+      continue;
+    }
+    if (!row.chunkId.trim()) citationFailures.push(`${activity}: missing chunkId`);
+    if (!row.sourceValue.trim()) citationFailures.push(`${activity}: missing sourceValue`);
+    if (row.chunkId.trim()) citedRowCount += 1;
     const expectedLevels = expectedCarePlanAdlSupportLevelsForSourceValue(row.sourceValue);
     if (row.mappingMode === "VERIFIED_MAPPING") {
       if (expectedLevels.length === 0) {
@@ -2772,6 +2787,9 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
     }
     unverifiedRows.push(`${activity}: CITED_INTERPRETATION requires source review`);
   }
+  if (citedRowCount === 0) {
+    citationFailures.push("No cited ADL support-level rows are present; at least one evidence-backed ADL activity is required.");
+  }
 
   const structuralPassed = missing.length === 0 && duplicate.length === 0 && invalid.length === 0;
   const failures = [
@@ -2784,7 +2802,7 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
 
   return {
     passed: structuralPassed && citationFailures.length === 0 && supportLevelFailures.length === 0,
-    partial: rows.length > 0 && (missing.length < CARE_PLAN_ADL_CANONICAL_ROWS.length || supportLevelFailures.length === 0),
+    partial: citedRowCount > 0 && rows.length > 0 && (missing.length < CARE_PLAN_ADL_CANONICAL_ROWS.length || supportLevelFailures.length === 0),
     structuralPassed,
     reason: failures.length ? failures.join(" ") : null,
     unverifiedRows,

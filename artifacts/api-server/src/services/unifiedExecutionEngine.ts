@@ -2642,6 +2642,28 @@ export class UnifiedExecutionEngine {
       })),
     ];
 
+    const evidenceSelectionRouting = buildCompletedWorkEvidenceSelectionRouting(
+      professionalContext,
+      blueprintContract,
+      evidencePack,
+    );
+    const approvalWorkflow = {
+      ...(approvalBlockedByCompletionGates ? {
+        approvalBlocked: true,
+        approvalBlockedReason: "This draft did not pass completion checks and cannot be submitted for approval.",
+        completionGateFailures: approvalBlockingCompletionFailures.map((failure) => ({
+          gate: failure.gate,
+          message: plainCompletionFailure(failure),
+          details: (failure.details ?? []).map(plainCompletionFailureDetail),
+        })),
+        metadataOnlyCompletionFindings: metadataOnlyCompletionFailures.map((failure) => ({
+          gate: failure.gate,
+          message: failure.message,
+        })),
+      } : {}),
+      ...(evidenceSelectionRouting.length > 0 ? { evidenceSelectionRouting } : {}),
+    };
+
     const completedWork = await createDraft({
       organizationId,
       conversationId: request.conversationId,
@@ -2659,19 +2681,7 @@ export class UnifiedExecutionEngine {
       contentMarkdown: reviewResult.finalContent,
       reviewResult,
       createdByUserId: requesterId,
-      approvalWorkflow: approvalBlockedByCompletionGates ? {
-        approvalBlocked: true,
-        approvalBlockedReason: "This draft did not pass completion checks and cannot be submitted for approval.",
-        completionGateFailures: approvalBlockingCompletionFailures.map((failure) => ({
-          gate: failure.gate,
-          message: plainCompletionFailure(failure),
-          details: (failure.details ?? []).map(plainCompletionFailureDetail),
-        })),
-        metadataOnlyCompletionFindings: metadataOnlyCompletionFailures.map((failure) => ({
-          gate: failure.gate,
-          message: failure.message,
-        })),
-      } : undefined,
+      approvalWorkflow: Object.keys(approvalWorkflow).length > 0 ? approvalWorkflow : undefined,
       assetIds,
       artifactRequired,
       artifactState: artifactRequired ? "content_drafting" : null,
@@ -3028,6 +3038,7 @@ export class UnifiedExecutionEngine {
         completionGateFailures: approvalBlockingCompletionFailures,
         qualityScore: reviewResult.qualityScore,
         coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
+        evidenceSelectionRouting,
       },
     });
 
@@ -5428,6 +5439,19 @@ type SectionEvidenceRoutingRow = {
     tokenEstimate: number;
     selectionReason: "above_threshold" | "best_available_below_threshold" | "section_required";
   }>;
+  candidates: Array<{
+    chunkId: string;
+    sourceTitle: string;
+    sourceType?: string;
+    documentCategory?: string;
+    score: number;
+    categoryBoosted: boolean;
+    confidence: number;
+    tokenEstimate: number;
+    selected: boolean;
+    selectionReason: "above_threshold" | "best_available_below_threshold" | "section_required" | null;
+    dropReason: "below_threshold" | "budget" | null;
+  }>;
 };
 
 function buildSectionEvidenceBridge(
@@ -5520,7 +5544,8 @@ function rankEvidenceForSection(
     .sort((left, right) =>
       right.score - left.score ||
       Number(right.categoryBoosted) - Number(left.categoryBoosted) ||
-      right.chunk.confidence - left.chunk.confidence,
+      right.chunk.confidence - left.chunk.confidence ||
+      left.chunk.chunkId.localeCompare(right.chunk.chunkId),
     );
 
   let usedTokens = 0;
@@ -5557,6 +5582,7 @@ function rankEvidenceForSection(
   }
 
   const selectedIds = new Set(selected.map((item) => item.chunk.chunkId));
+  const selectedById = new Map(selected.map((item) => [item.chunk.chunkId, item]));
   const rejected = ranked.filter((item) => !selectedIds.has(item.chunk.chunkId));
   return {
     sectionCode: section.sectionCode,
@@ -5577,6 +5603,26 @@ function rankEvidenceForSection(
       tokenEstimate: item.tokenEstimate,
       selectionReason: item.selectionReason,
     })),
+    candidates: ranked.map((item) => {
+      const selectedItem = selectedById.get(item.chunk.chunkId);
+      return {
+        chunkId: item.chunk.chunkId,
+        sourceTitle: item.chunk.sourceTitle,
+        sourceType: item.chunk.sourceType,
+        documentCategory: item.chunk.documentCategory,
+        score: roundEvidenceScore(item.score),
+        categoryBoosted: item.categoryBoosted,
+        confidence: roundEvidenceScore(item.chunk.confidence ?? 0),
+        tokenEstimate: item.tokenEstimate,
+        selected: Boolean(selectedItem),
+        selectionReason: selectedItem?.selectionReason ?? null,
+        dropReason: selectedItem
+          ? null
+          : item.score < SECTION_EVIDENCE_RELEVANCE_THRESHOLD
+            ? "below_threshold"
+            : "budget",
+      };
+    }),
   };
 }
 
@@ -5589,6 +5635,9 @@ function isRequiredCarePlanSectionEvidence(
   }
   if (section.sectionCode === "DISASTER_MANAGEMENT_STRATEGY") {
     return isFireRiskAssessmentChunk(chunk) && extractFireEquipment(chunk.text).length > 0;
+  }
+  if (section.sectionCode === "UNDERTAKING_ADL") {
+    return isAdlChecklistChunk(chunk);
   }
   return false;
 }
@@ -8263,6 +8312,35 @@ function buildCoverageSnapshot(
     plan: report.plan,
     sectionEvidenceRouting: buildSectionEvidenceRoutingReport(contract, evidencePack),
   };
+}
+
+function buildCompletedWorkEvidenceSelectionRouting(
+  professionalContext: ProfessionalExecutionContext | null | undefined,
+  contract?: BlueprintExecutionContract | null,
+  evidencePack?: EvidencePack | null,
+): Array<{
+  requirementId: string | null;
+  sectionCode: string;
+  chunkId: string;
+  score: number;
+  selected: boolean;
+  reason: string;
+}> {
+  if (!shouldUseBatchedParticipantCarePlanGeneration(professionalContext, contract) || !evidencePack) return [];
+  const requirementBySectionCode = new Map(
+    ((contract.blueprint.deliverableContract?.requirementPlan ?? []) as Array<{ id?: string; sectionCode?: string }>)
+      .filter((item) => item.sectionCode)
+      .map((item) => [item.sectionCode!, item.id ?? null]),
+  );
+  return buildSectionEvidenceRoutingReport(contract, evidencePack)
+    .flatMap((row) => row.candidates.map((candidate) => ({
+      requirementId: requirementBySectionCode.get(row.sectionCode) ?? null,
+      sectionCode: row.sectionCode,
+      chunkId: candidate.chunkId,
+      score: candidate.score,
+      selected: candidate.selected,
+      reason: candidate.selectionReason ?? candidate.dropReason ?? "not_selected",
+    })));
 }
 
 function normaliseReviewResultToStructuredSections(

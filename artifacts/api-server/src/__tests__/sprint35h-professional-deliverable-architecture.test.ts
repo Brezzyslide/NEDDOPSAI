@@ -4072,7 +4072,20 @@ The strategies below implement the participant's behaviour support plan.
     expect(sourceText).toContain("return isParticipantIdentityChunk(chunk)");
     expect(sourceText).toContain('section.sectionCode === "DISASTER_MANAGEMENT_STRATEGY"');
     expect(sourceText).toContain("return isFireRiskAssessmentChunk(chunk) && extractFireEquipment(chunk.text).length > 0");
+    expect(sourceText).toContain('section.sectionCode === "UNDERTAKING_ADL"');
+    expect(sourceText).toContain("return isAdlChecklistChunk(chunk)");
     expect(sourceText).toContain('selectionReason: "section_required"');
+  });
+
+  it("records deterministic section-evidence routing decisions for completed work audit", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("left.chunk.chunkId.localeCompare(right.chunk.chunkId)");
+    expect(sourceText).toContain("buildCompletedWorkEvidenceSelectionRouting");
+    expect(sourceText).toContain("evidenceSelectionRouting");
+    expect(sourceText).toContain('dropReason: selectedItem');
+    expect(sourceText).toContain('"below_threshold"');
+    expect(sourceText).toContain('"budget"');
   });
 
   it("applies server-derived care-plan cells with section-scoped evidence", () => {
@@ -4173,7 +4186,9 @@ The strategies below implement the participant's behaviour support plan.
     expect(sourceText).toContain("buildIncompleteDraftContent({");
     expect(sourceText).toContain("# Unapproved Incomplete Draft");
     expect(sourceText).toContain("completion_gate_approval_blockers");
-    expect(sourceText).toContain("approvalWorkflow: approvalBlockedByCompletionGates");
+    expect(sourceText).toContain("const approvalWorkflow = {");
+    expect(sourceText).toContain("approvalBlocked: true");
+    expect(sourceText).toContain("evidenceSelectionRouting");
   });
 
   it("keeps behaviour safety, protective confirmation and claim integrity as task-failing gates", () => {
