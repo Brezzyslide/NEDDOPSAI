@@ -1553,7 +1553,7 @@ function carePlanCoreOperatingSectionsAllUnsupported(
     "care-plan-support-delivery-client-safety",
   ]);
   const results = new Map(coverageReport.requirementResults.map((item) => [item.requirementId, item]));
-  return Array.from(required).every((id) => results.get(id)?.finalResult !== "SATISFIED");
+  return Array.from(required).every((id) => (results.get(id)?.supportState ?? "unsupported") === "unsupported");
 }
 
 function isCoverageEvidenceGapFailure(

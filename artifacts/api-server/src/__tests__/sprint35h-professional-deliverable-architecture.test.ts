@@ -4082,10 +4082,38 @@ The strategies below implement the participant's behaviour support plan.
 
     expect(sourceText).toContain("left.chunk.chunkId.localeCompare(right.chunk.chunkId)");
     expect(sourceText).toContain("buildCompletedWorkEvidenceSelectionRouting");
+    expect(sourceText).toContain('contract?.blueprint?.code !== "care_plan"');
+    expect(sourceText).not.toContain("!shouldUseBatchedParticipantCarePlanGeneration(professionalContext, contract) || !evidencePack");
     expect(sourceText).toContain("evidenceSelectionRouting");
     expect(sourceText).toContain('dropReason: selectedItem');
     expect(sourceText).toContain('"below_threshold"');
     expect(sourceText).toContain('"budget"');
+  });
+
+  it("uses configurable deterministic sampling for professional deliverable generation", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+    const provider = workspaceSource("lib/ai-gateway/src/providers/openai.ts");
+    const types = workspaceSource("lib/ai-gateway/src/types.ts");
+
+    expect(types).toContain("temperature?: number");
+    expect(types).toContain("seed?: number");
+    expect(provider).toContain("temperature: request.temperature ?? 0.3");
+    expect(provider).toContain("...(Number.isInteger(request.seed) ? { seed: request.seed } : {})");
+    expect(engine).toContain('const PROFESSIONAL_GENERATION_TEMPERATURE_ENV = "NEEDSOPS_PROFESSIONAL_GENERATION_TEMPERATURE"');
+    expect(engine).toContain('const PROFESSIONAL_GENERATION_SEED_ENV = "NEEDSOPS_PROFESSIONAL_GENERATION_SEED"');
+    expect(engine).toContain("function professionalGenerationSamplingOptions()");
+    expect(engine.match(/\.\.\.professionalGenerationSamplingOptions\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it("distinguishes partially supported coverage from unsupported floor failures", () => {
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
+    const runtime = source("services/blueprintRuntimeValidationService.ts");
+
+    expect(coverage).toContain('export type RequirementCoverageSupportState =');
+    expect(coverage).toContain('"partially_supported"');
+    expect(coverage).toContain('if (finalResult === "PARTIAL") return "partially_supported"');
+    expect(runtime).toContain('(results.get(id)?.supportState ?? "unsupported") === "unsupported"');
+    expect(runtime).not.toContain("results.get(id)?.finalResult !== \"SATISFIED\"");
   });
 
   it("applies server-derived care-plan cells with section-scoped evidence", () => {

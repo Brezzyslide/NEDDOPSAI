@@ -25,7 +25,7 @@
 import { randomUUID, createHash } from "crypto";
 import { eq, desc, and } from "drizzle-orm";
 import { createAIGateway } from "@workspace/ai-gateway";
-import type { AIGatewayContext } from "@workspace/ai-gateway";
+import type { AIGatewayContext, AIRequest } from "@workspace/ai-gateway";
 import {
   buildDNASystemInstruction,
   captureSpecialistRunVersions,
@@ -487,9 +487,32 @@ const RESULT_SCHEMA_DESCRIPTION = `{
 const MAX_RETRIES = parseInt(process.env.SPECIALIST_MAX_RETRIES ?? "2", 10);
 const RUN_TIMEOUT_MS = parseInt(process.env.SPECIALIST_RUN_TIMEOUT_MS ?? "180000", 10);
 const CONTEXT_TOKEN_BUDGET = parseInt(process.env.SPECIALIST_CONTEXT_TOKEN_BUDGET ?? "8000", 10);
+const PROFESSIONAL_GENERATION_TEMPERATURE_ENV = "NEEDSOPS_PROFESSIONAL_GENERATION_TEMPERATURE";
+const PROFESSIONAL_GENERATION_SEED_ENV = "NEEDSOPS_PROFESSIONAL_GENERATION_SEED";
 
 // Roles permitted to invoke task_execution through the AI gateway.
 const EXECUTION_PERMITTED_ROLES = new Set(["owner", "administrator", "manager"]);
+
+function readFiniteNumberEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function professionalGenerationSamplingOptions(): Pick<AIRequest, "temperature" | "seed"> {
+  return {
+    temperature: readFiniteNumberEnv(PROFESSIONAL_GENERATION_TEMPERATURE_ENV, 0),
+    seed: readIntegerEnv(PROFESSIONAL_GENERATION_SEED_ENV, 1),
+  };
+}
 
 // ─── Sprint 29I helpers ───────────────────────────────────────────────────────
 
@@ -3173,6 +3196,7 @@ export class UnifiedExecutionEngine {
       responseSchema: buildProfessionalDeliverableResponseSchema(professionalContext),
       promptCacheKey: buildProfessionalPromptCacheKey(authCtx.organizationId, specialistCode, blueprint, blueprintContract, professionalContext),
       runtimeProfile: "professional_execution",
+      ...professionalGenerationSamplingOptions(),
       allowProviderFallback: false,
     });
 
@@ -3336,6 +3360,7 @@ export class UnifiedExecutionEngine {
             input.professionalContext,
           ),
           runtimeProfile: "professional_execution_batch",
+          ...professionalGenerationSamplingOptions(),
           allowProviderFallback: false,
         });
       } catch (error) {
@@ -3591,6 +3616,7 @@ export class UnifiedExecutionEngine {
       outputMode: "json",
       responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
       runtimeProfile: "final_synthesis",
+      ...professionalGenerationSamplingOptions(),
       allowProviderFallback: false,
     });
 
@@ -8315,7 +8341,7 @@ function buildCoverageSnapshot(
 }
 
 function buildCompletedWorkEvidenceSelectionRouting(
-  professionalContext: ProfessionalExecutionContext | null | undefined,
+  _professionalContext: ProfessionalExecutionContext | null | undefined,
   contract?: BlueprintExecutionContract | null,
   evidencePack?: EvidencePack | null,
 ): Array<{
@@ -8326,7 +8352,7 @@ function buildCompletedWorkEvidenceSelectionRouting(
   selected: boolean;
   reason: string;
 }> {
-  if (!shouldUseBatchedParticipantCarePlanGeneration(professionalContext, contract) || !evidencePack) return [];
+  if (contract?.blueprint?.code !== "care_plan" || !evidencePack?.chunks?.length) return [];
   const requirementBySectionCode = new Map(
     ((contract.blueprint.deliverableContract?.requirementPlan ?? []) as Array<{ id?: string; sectionCode?: string }>)
       .filter((item) => item.sectionCode)

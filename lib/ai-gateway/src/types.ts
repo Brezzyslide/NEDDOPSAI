@@ -165,6 +165,10 @@ export interface AIRequest {
   /** Model identifier (e.g. "gpt-4o-mini") */
   model?: string;
   maxTokens?: number;
+  /** Provider sampling temperature. Callers may set this for reproducible professional generation. */
+  temperature?: number;
+  /** Provider sampling seed when supported by the selected model/provider. */
+  seed?: number;
   /**
    * Purpose-specific provider runtime profile.
    * Does not change data access permissions; it controls timeout/retry/fallback

@@ -92,6 +92,11 @@ export type RequirementFinalResult =
   | "NOT_SATISFIED"
   | "NOT_APPLICABLE";
 
+export type RequirementCoverageSupportState =
+  | "satisfied"
+  | "partially_supported"
+  | "unsupported";
+
 export type RequirementSubstantiveValidationMode =
   | "TEMPLATE_CRITERIA"
   | "ADEQUACY_CRITERIA"
@@ -150,6 +155,7 @@ export interface DeliverableRequirementCoverageItem {
   citationFindings?: CarePlanCitationFinding[];
   substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   finalResult: RequirementFinalResult;
+  supportState: RequirementCoverageSupportState;
   failureReason: string | null;
 }
 
@@ -1725,6 +1731,7 @@ function applyCarePlanCitationGate(
       ? "MISSING_CITATION"
       : "UNSUPPORTED_CITATION",
     finalResult: "NOT_SATISFIED",
+    supportState: "unsupported",
     failureReason: item.failureReason ? `${item.failureReason} ${reason}` : reason,
   };
 }
@@ -2339,10 +2346,12 @@ function extractMobilityAidClaims(content: string): string[] {
 
 function coverageItem(
   requirement: DeliverableRequirement,
-  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "origin" | "sourceBlueprintSection" | "expectedRepresentation" | "adequacyCriteria" | "substantiveValidationMode"> & {
+  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "origin" | "sourceBlueprintSection" | "expectedRepresentation" | "adequacyCriteria" | "templateCriteria" | "completionFields" | "expectedEvidenceCategories" | "substantiveValidationMode" | "supportState"> & {
     substantiveValidationMode?: RequirementSubstantiveValidationMode;
+    supportState?: RequirementCoverageSupportState;
   },
 ): DeliverableRequirementCoverageItem {
+  const supportState = result.supportState ?? deriveCoverageSupportState(result.finalResult);
   return {
     requirementId: requirement.id,
     requirement: requirement.description,
@@ -2357,8 +2366,15 @@ function coverageItem(
     substantiveValidationMode: result.substantiveValidationMode ?? (
       result.substantiveResult === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FALLBACK_HEURISTIC"
     ),
+    supportState,
     ...result,
   };
+}
+
+function deriveCoverageSupportState(finalResult: RequirementFinalResult): RequirementCoverageSupportState {
+  if (finalResult === "SATISFIED") return "satisfied";
+  if (finalResult === "PARTIAL") return "partially_supported";
+  return "unsupported";
 }
 
 function parseMarkdownStructure(markdown: string): MarkdownStructure {

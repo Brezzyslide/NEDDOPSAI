@@ -249,7 +249,8 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         ...(providerResponseFormat ? { response_format: providerResponseFormat } : {}),
         ...(request.promptCacheKey ? { prompt_cache_key: request.promptCacheKey } : {}),
         max_tokens: request.maxTokens ?? 2048,
-        temperature: 0.3, // Low temp for deterministic structured output
+        temperature: request.temperature ?? 0.3, // Low temp for deterministic structured output
+        ...(Number.isInteger(request.seed) ? { seed: request.seed } : {}),
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
 
       const choice = completion.choices[0];
