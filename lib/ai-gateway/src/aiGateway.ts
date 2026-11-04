@@ -193,6 +193,9 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   let actualModel: string | undefined;
   let actualResponseFormat: string | null = null;
   let actualFinishReason: string | null = null;
+  let providerTemperature: number | null = null;
+  let providerSeed: number | null = null;
+  let systemFingerprint: string | null = null;
   let cachedInputTokens: number | null = null;
   let configuredTimeoutMs: number | undefined;
   let retryCount: number | undefined;
@@ -211,6 +214,9 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
       actualModel = result.model;
       actualResponseFormat = result.responseFormat;
       actualFinishReason = result.finishReason;
+      providerTemperature = result.providerTemperature;
+      providerSeed = result.providerSeed;
+      systemFingerprint = result.systemFingerprint;
       cachedInputTokens = result.cachedInputTokens;
       configuredTimeoutMs = result.configuredTimeoutMs;
       retryCount = result.retries;
@@ -303,6 +309,9 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     outputMode,
     responseFormat: actualResponseFormat,
     finishReason: actualFinishReason,
+    providerTemperature,
+    providerSeed,
+    systemFingerprint,
     cachedInputTokens,
   };
 
@@ -326,6 +335,9 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     modelUsed: actualModel,
     responseFormat: actualResponseFormat,
     finishReason: actualFinishReason,
+    providerTemperature,
+    providerSeed,
+    systemFingerprint,
     configuredTimeoutMs,
     retryCount,
     providerFailureKind,
@@ -433,6 +445,9 @@ interface GatewayAuditParams {
   modelUsed?: string;
   responseFormat?: string | null;
   finishReason?: string | null;
+  providerTemperature?: number | null;
+  providerSeed?: number | null;
+  systemFingerprint?: string | null;
   configuredTimeoutMs?: number;
   retryCount?: number;
   providerFailureKind?: string;
@@ -509,6 +524,9 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
       modelUsed: params.modelUsed ?? null,
       responseFormat: params.responseFormat ?? null,
       finishReason: params.finishReason ?? null,
+      providerTemperature: params.providerTemperature ?? null,
+      providerSeed: params.providerSeed ?? null,
+      systemFingerprint: params.systemFingerprint ?? null,
       configuredTimeoutMs: params.configuredTimeoutMs ?? null,
       retryCount: params.retryCount ?? null,
       providerFailureKind: params.providerFailureKind ?? null,

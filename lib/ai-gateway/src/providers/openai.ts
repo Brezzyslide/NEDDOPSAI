@@ -46,6 +46,9 @@ export interface OpenAICompletionResult {
   responseFormat: string | null;
   finishReason: string | null;
   cachedInputTokens: number | null;
+  providerTemperature: number;
+  providerSeed: number | null;
+  systemFingerprint: string | null;
 }
 
 export interface OpenAIRuntimePolicy {
@@ -240,8 +243,14 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
   while (attempts <= policy.maxRetries) {
     attempts++;
     try {
+      const providerModel = request.model ?? cfg.model;
+      const providerTemperature = request.temperature ?? 0.3;
+      const providerSeed = Number.isInteger(request.seed) ? request.seed! : null;
+      console.info(
+        `[AI Gateway] OpenAI request runtimeProfile=${policy.runtimeProfile} model=${providerModel} temperature=${providerTemperature} seed=${providerSeed ?? "unset"}`,
+      );
       const completion = await client.chat.completions.create({
-        model: request.model ?? cfg.model,
+        model: providerModel,
         messages: [
           { role: "system", content: request.systemPrompt },
           { role: "user", content: request.userMessage },
@@ -249,8 +258,8 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         ...(providerResponseFormat ? { response_format: providerResponseFormat } : {}),
         ...(request.promptCacheKey ? { prompt_cache_key: request.promptCacheKey } : {}),
         max_tokens: request.maxTokens ?? 2048,
-        temperature: request.temperature ?? 0.3, // Low temp for deterministic structured output
-        ...(Number.isInteger(request.seed) ? { seed: request.seed } : {}),
+        temperature: providerTemperature, // Low temp for deterministic structured output
+        ...(providerSeed !== null ? { seed: providerSeed } : {}),
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
 
       const choice = completion.choices[0];
@@ -274,6 +283,9 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         cachedInputTokens: typeof promptTokenDetails?.cached_tokens === "number"
           ? promptTokenDetails.cached_tokens
           : null,
+        providerTemperature,
+        providerSeed,
+        systemFingerprint: completion.system_fingerprint ?? null,
       };
     } catch (err) {
       lastError = err;

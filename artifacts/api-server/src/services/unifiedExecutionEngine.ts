@@ -2044,6 +2044,7 @@ export class UnifiedExecutionEngine {
       professionalWork,
     });
     runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
+    runtimeGate = appendCarePlanBatchTruncationGate(runtimeGate, latestModelTelemetry, professionalContext);
     const completeBatchedCanonicalDraft = hasCompleteBatchedCanonicalDraft(
       professionalContext,
       latestModelTelemetry,
@@ -2168,6 +2169,7 @@ export class UnifiedExecutionEngine {
           professionalWork,
         });
         runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
+        runtimeGate = appendCarePlanBatchTruncationGate(runtimeGate, latestModelTelemetry, professionalContext);
       }
     }
     if (!runtimeGate.passed) {
@@ -2218,6 +2220,7 @@ export class UnifiedExecutionEngine {
           professionalWork,
         });
         runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
+        runtimeGate = appendCarePlanBatchTruncationGate(runtimeGate, latestModelTelemetry, professionalContext);
         coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
       }
       const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
@@ -3269,6 +3272,9 @@ export class UnifiedExecutionEngine {
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
         model: response.model ?? null,
+        providerTemperature: response.providerTemperature ?? null,
+        providerSeed: response.providerSeed ?? null,
+        systemFingerprint: response.systemFingerprint ?? null,
         latencyMs: response.latencyMs,
         usedFallback: response.usedFallback,
         runtimeProfile: response.runtimeProfile ?? null,
@@ -3298,7 +3304,12 @@ export class UnifiedExecutionEngine {
     const allSections: ParsedDeliverableSection[] = [];
     const generationEvidencePackByRequirementId = new Map<string, EvidencePack | null>();
     const batchTelemetry: Record<string, unknown>[] = [];
-    const batchFailures: Array<{ batchId: string; requirementIds: string[]; reason: string }> = [];
+    const batchFailures: Array<{
+      batchId: string;
+      requirementIds: string[];
+      reason: string;
+      failureKind?: "provider_failure" | "generation_truncated" | "generation_failed";
+    }> = [];
     const forwardContext: CarePlanBatchForwardContext = {
       participantIdentity: {},
       planDates: {},
@@ -3370,7 +3381,7 @@ export class UnifiedExecutionEngine {
         appendCarePlanBatchSections(
           allSections,
           generationEvidencePackByRequirementId,
-          buildFailedBatchSections(batch, reason)
+          buildFailedBatchSections(batch, reason, { failureKind: "provider_failure" })
             .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
           batchEvidencePack ?? null,
         );
@@ -3412,6 +3423,9 @@ export class UnifiedExecutionEngine {
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
         model: response.model ?? null,
+        providerTemperature: response.providerTemperature ?? null,
+        providerSeed: response.providerSeed ?? null,
+        systemFingerprint: response.systemFingerprint ?? null,
         latencyMs: response.latencyMs ?? Date.now() - startedAt,
         runtimeProfile: response.runtimeProfile ?? null,
         usedFallback: response.usedFallback,
@@ -3424,7 +3438,7 @@ export class UnifiedExecutionEngine {
         appendCarePlanBatchSections(
           allSections,
           generationEvidencePackByRequirementId,
-          buildFailedBatchSections(batch, reason)
+          buildFailedBatchSections(batch, reason, { failureKind: "generation_failed" })
             .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
           batchEvidencePack ?? null,
         );
@@ -3433,16 +3447,16 @@ export class UnifiedExecutionEngine {
       }
 
       if (response.finishReason === "length") {
-        const reason = `Batch ${batch.name} stopped at the configured output limit (${outputBudget} tokens).`;
-        batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
+        const reason = `Batch ${batch.name} was truncated at the configured output limit (${outputBudget} tokens) before all target sections were completed.`;
+        batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason, failureKind: "generation_truncated" });
         appendCarePlanBatchSections(
           allSections,
           generationEvidencePackByRequirementId,
-          buildFailedBatchSections(batch, reason)
+          buildFailedBatchSections(batch, reason, { failureKind: "generation_truncated" })
             .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
           batchEvidencePack ?? null,
         );
-        batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
+        batchTelemetry.push({ ...commonTelemetry, failed: true, failureKind: "generation_truncated", failureReason: reason });
         continue;
       }
 
@@ -3457,7 +3471,7 @@ export class UnifiedExecutionEngine {
         appendCarePlanBatchSections(
           allSections,
           generationEvidencePackByRequirementId,
-          buildFailedBatchSections(batch, reason)
+          buildFailedBatchSections(batch, reason, { failureKind: "generation_failed" })
             .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack, batchContract)),
           batchEvidencePack ?? null,
         );
@@ -3678,6 +3692,9 @@ export class UnifiedExecutionEngine {
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
         model: response.model ?? null,
+        providerTemperature: response.providerTemperature ?? null,
+        providerSeed: response.providerSeed ?? null,
+        systemFingerprint: response.systemFingerprint ?? null,
         latencyMs: response.latencyMs,
         usedFallback: response.usedFallback,
         runtimeProfile: response.runtimeProfile ?? null,
@@ -3808,6 +3825,9 @@ export class UnifiedExecutionEngine {
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
         model: response.model ?? null,
+        providerTemperature: response.providerTemperature ?? null,
+        providerSeed: response.providerSeed ?? null,
+        systemFingerprint: response.systemFingerprint ?? null,
         latencyMs: response.latencyMs,
         usedFallback: response.usedFallback,
         runtimeProfile: response.runtimeProfile ?? null,
@@ -4018,6 +4038,7 @@ const APPROVAL_BLOCKING_COMPLETION_GATES = new Set<string>([
   "evidence_gap",
   "repair_degraded",
   "professional_placeholder",
+  "generation_truncation",
 ]);
 
 const TASK_FAILING_COMPLETION_GATES = new Set<string>([
@@ -6129,11 +6150,18 @@ const CARE_PLAN_BATCHES: CarePlanBatch[] = [
     ],
   },
   {
-    id: "support-delivery-safeguards",
-    name: "Support delivery and disaster safeguards",
-    rationale: "Groups lighter operational support and disaster sections while table-heavy behaviour/RP sections run separately.",
+    id: "support-delivery",
+    name: "Support Delivery and Client Safety",
+    rationale: "Keeps support-delivery worker actions isolated so support descriptions are not starved by unrelated disaster-management content.",
     requirementIds: [
       "care-plan-support-delivery-client-safety",
+    ],
+  },
+  {
+    id: "disaster-management",
+    name: "Disaster Management",
+    rationale: "Keeps participant-specific disaster and evacuation arrangements isolated from support-delivery worker action content.",
+    requirementIds: [
       "care-plan-disaster-management-strategy",
     ],
   },
@@ -6232,6 +6260,45 @@ function appendCarePlanCrossSectionConsistencyGate(
         details: failures.map((failure) =>
           `${failure.fact}: ${failure.firstSection}="${failure.firstStatement}" contradicts ${failure.secondSection}="${failure.secondStatement}"`,
         ),
+      },
+    ],
+  };
+}
+
+function appendCarePlanBatchTruncationGate(
+  result: { passed: boolean; failures: BlueprintRuntimeGateFailure[] },
+  modelTelemetry: Record<string, unknown> | null | undefined,
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+): { passed: boolean; failures: BlueprintRuntimeGateFailure[] } {
+  if (!shouldUseBatchedParticipantCarePlanGeneration(professionalContext, { blueprint: { code: "care_plan" } } as BlueprintExecutionContract)) {
+    return result;
+  }
+  const batchFailures = modelTelemetry?.batchFailures;
+  if (!Array.isArray(batchFailures)) return result;
+  const truncations = batchFailures
+    .filter((failure): failure is { batchId?: unknown; requirementIds?: unknown; reason?: unknown; failureKind: "generation_truncated" } =>
+      Boolean(failure) &&
+      typeof failure === "object" &&
+      (failure as { failureKind?: unknown }).failureKind === "generation_truncated"
+    );
+  if (truncations.length === 0) return result;
+  if (result.failures.some((failure) => failure.gate === "generation_truncation")) return result;
+  return {
+    passed: false,
+    failures: [
+      ...result.failures,
+      {
+        gate: "generation_truncation",
+        state: "validation",
+        message: "Care plan generation truncated before all target sections were completed. This is an output-budget generation failure, not an evidence absence.",
+        details: truncations.map((failure) => {
+          const batchId = typeof failure.batchId === "string" ? failure.batchId : "unknown_batch";
+          const requirementIds = Array.isArray(failure.requirementIds)
+            ? failure.requirementIds.filter((id): id is string => typeof id === "string")
+            : [];
+          const reason = typeof failure.reason === "string" ? failure.reason : "Batch was truncated at the configured output limit.";
+          return `${batchId}${requirementIds.length ? ` (${requirementIds.join(", ")})` : ""}: ${reason}`;
+        }),
       },
     ],
   };
@@ -7387,8 +7454,10 @@ function buildCarePlanBatchDirective(
 }
 
 function carePlanBatchOutputBudget(batch: CarePlanBatch): number {
-  if (batch.id === "adl") return 6500;
-  if (batch.id === "behavioural-management") return 6500;
+  if (batch.id === "adl") return 8000;
+  if (batch.id === "behavioural-management") return 9000;
+  if (batch.id === "communication") return 6500;
+  if (batch.id === "support-delivery") return 6500;
   if (batch.id === "goals") return 5000;
   if (batch.id === "restrictive-practices") return 5000;
   return 4500;
@@ -7433,12 +7502,17 @@ function extractGatewayRetryCount(error: unknown): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function buildFailedBatchSections(batch: CarePlanBatch, reason: string): ParsedDeliverableSection[] {
+function buildFailedBatchSections(
+  batch: CarePlanBatch,
+  reason: string,
+  options: { failureKind?: "provider_failure" | "generation_truncated" | "generation_failed" } = {},
+): ParsedDeliverableSection[] {
   return batch.requirementIds.map((requirementId) =>
     buildGenerationFailedDeclaredInstrumentSection(
       requirementId,
       carePlanRequirementHeading(requirementId),
       reason,
+      options,
     )
   );
 }

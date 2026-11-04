@@ -230,6 +230,12 @@ export interface AIResponse {
   responseFormat: string | null;
   /** Provider completion finish reason when available. */
   finishReason?: string | null;
+  /** Provider sampling temperature actually sent to the provider. */
+  providerTemperature?: number | null;
+  /** Provider sampling seed actually sent to the provider, when supported/supplied. */
+  providerSeed?: number | null;
+  /** Provider backend fingerprint returned with the response, when available. */
+  systemFingerprint?: string | null;
   /** Input tokens served from provider prompt cache when reported. */
   cachedInputTokens?: number | null;
 }

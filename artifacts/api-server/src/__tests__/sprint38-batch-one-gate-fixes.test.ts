@@ -11,6 +11,7 @@ import {
 import {
   assembleDeliverableMarkdownFromSections,
   applyParticipantCarePlanClaimGuard,
+  buildGenerationFailedDeclaredInstrumentSection,
   collectParticipantCarePlanSuppressionRecords,
   verifySpanDetailed,
 } from "../services/claimValidationService";
@@ -455,7 +456,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
       blueprintContract: contract(blueprint),
     });
     const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
-    const fullStructuredSections = profile.requirements.slice(0, 14).map((requirement, index) => ({
+    const fullStructuredSections = profile.requirements.map((requirement, index) => ({
       requirementId: requirement.id,
       heading: `Section ${index + 1}`,
       content: [
@@ -474,7 +475,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(coverage.missing).toEqual(expect.arrayContaining([
       expect.objectContaining({
         requirementId: "__deliverable_section_integrity__",
-        reason: expect.stringContaining("markdown section count (5) does not match structured deliverable section count (14)"),
+        reason: expect.stringContaining(`markdown section count (5) does not match structured deliverable section count (${fullStructuredSections.length})`),
       }),
     ]));
     expect(coverage.missingCount).toBeGreaterThan(0);
@@ -1204,6 +1205,43 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(snapshotPersistence).toContain("throw err");
     expect(sessionPersistence).toContain("throw err");
     expect(gateFailurePath).not.toContain("}).catch(() => {})");
+  });
+
+  it("renders participant care plan truncation as generation truncation instead of a missing-evidence absence", () => {
+    const section = buildGenerationFailedDeclaredInstrumentSection(
+      "care-plan-undertaking-adl",
+      "Undertaking ADL",
+      "Batch adl was truncated at the configured output limit (6500 tokens) before all target sections were completed.",
+      { failureKind: "generation_truncated" },
+    );
+    const markdown = assembleDeliverableMarkdownFromSections([section], ["care-plan-undertaking-adl"]);
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(section.evidenceGaps).toEqual([{
+      category: "generation_truncated",
+      reason: "Batch adl was truncated at the configured output limit (6500 tokens) before all target sections were completed.",
+    }]);
+    expect(markdown).toContain("Generation truncated");
+    expect(markdown).toContain("generation_truncated");
+    expect(markdown).not.toContain("not recorded in retrieved evidence");
+    expect(engine).toContain('gate: "generation_truncation"');
+    expect(engine).toContain("output-budget generation failure, not an evidence absence");
+  });
+
+  it("records provider sampling telemetry and system fingerprints through the gateway and professional model telemetry", () => {
+    const openaiProvider = source("../../../lib/ai-gateway/src/providers/openai.ts");
+    const aiGateway = source("../../../lib/ai-gateway/src/aiGateway.ts");
+    const uee = source("services/unifiedExecutionEngine.ts");
+
+    expect(openaiProvider).toContain("temperature=${providerTemperature}");
+    expect(openaiProvider).toContain("seed=${providerSeed");
+    expect(openaiProvider).toContain("systemFingerprint: completion.system_fingerprint ?? null");
+    expect(aiGateway).toContain("providerTemperature: params.providerTemperature ?? null");
+    expect(aiGateway).toContain("providerSeed: params.providerSeed ?? null");
+    expect(aiGateway).toContain("systemFingerprint: params.systemFingerprint ?? null");
+    expect(uee).toContain("providerTemperature: response.providerTemperature ?? null");
+    expect(uee).toContain("providerSeed: response.providerSeed ?? null");
+    expect(uee).toContain("systemFingerprint: response.systemFingerprint ?? null");
   });
 
   it("keeps professional deliverable schemas valid for OpenAI strict structured outputs", async () => {

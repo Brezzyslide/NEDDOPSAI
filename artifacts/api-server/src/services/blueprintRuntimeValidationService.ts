@@ -53,6 +53,7 @@ export interface BlueprintRuntimeGateFailure {
     | "evidence_gap"
     | "repair_degraded"
     | "targeted_repair_skipped"
+    | "generation_truncation"
     | "care_plan_core_operating_floor";
   state: BlueprintRuntimeGateState;
   message: string;

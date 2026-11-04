@@ -674,6 +674,14 @@ const CARE_PLAN_ADL_GENERATION_FAILED_ROW = {
   mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
 };
 
+const CARE_PLAN_ADL_GENERATION_TRUNCATED_ROW = {
+  supportLevel: "generation_truncated",
+  workerDescription: "Generation truncated - output limit reached before this ADL activity could be completed.",
+  sourceValue: "generation_truncated",
+  chunkId: "generation_truncated",
+  mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
+};
+
 const CARE_PLAN_UNSUPPORTED_CLAIM_ABSENCE_VALUE = "not recorded in retrieved evidence";
 
 type CarePlanBehaviourFold = "proactive" | "reactive" | "protective";
@@ -891,13 +899,26 @@ export function buildGenerationFailedDeclaredInstrumentSection(
   requirementId: string,
   heading: string,
   reason: string,
+  options: { failureKind?: "provider_failure" | "generation_truncated" | "generation_failed" } = {},
 ): ParsedDeliverableSection {
+  const failureKind = options.failureKind ?? "generation_failed";
+  const isTruncation = failureKind === "generation_truncated";
+  const structuredRows = requirementId === "care-plan-undertaking-adl" && isTruncation
+    ? CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => ({
+        activity,
+        ...CARE_PLAN_ADL_GENERATION_TRUNCATED_ROW,
+      }))
+    : [];
   return normaliseCarePlanDeclaredInstrumentSection({
     requirementId,
     heading,
-    content: `Generation incomplete - ${reason}`,
+    content: `${isTruncation ? "Generation truncated" : "Generation incomplete"} - ${reason}`,
     evidenceSources: [],
-    structuredRows: [],
+    evidenceGaps: [{
+      category: failureKind,
+      reason,
+    }],
+    structuredRows,
   });
 }
 

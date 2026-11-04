@@ -1530,7 +1530,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain('"mobility"');
     expect(src).toContain('"behavioural-management"');
     expect(src).toContain('"restrictive-practices"');
-    expect(src).toContain('"support-delivery-safeguards"');
+    expect(src).toContain('"support-delivery"');
+    expect(src).toContain('"disaster-management"');
     expect(src).toContain('"specialist-admin"');
     expect(src).toContain('"care-plan-undertaking-adl"');
     expect(src).toContain('"care-plan-mobility-strategy"');
@@ -1545,8 +1546,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("mobilityFindings");
     expect(src).toContain("restrictivePracticeFacts");
     expect(src).toContain("narrowEvidencePackForCarePlanBatch");
-    expect(src).toContain("buildFailedBatchSections(batch, reason)");
-    expect(src).toContain("Batch ${batch.name} stopped at the configured output limit");
+    expect(src).toContain("buildFailedBatchSections(batch, reason, { failureKind:");
+    expect(src).toContain("Batch ${batch.name} was truncated at the configured output limit");
     expect(src).toContain("Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries");
   });
 
@@ -1577,7 +1578,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
     expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
     expect(src).toContain("appendCarePlanBatchSections(");
-    expect(src).toContain("buildFailedBatchSections(batch, reason)");
+    expect(src).toContain('buildFailedBatchSections(batch, reason, { failureKind: "provider_failure" })');
     expect(src).toContain("applyServerDerivedCarePlanSectionCells(section,");
     expect(src).toContain("batchEvidencePack");
     expect(src).toContain("batchContract");
@@ -4097,8 +4098,9 @@ The strategies below implement the participant's behaviour support plan.
 
     expect(types).toContain("temperature?: number");
     expect(types).toContain("seed?: number");
-    expect(provider).toContain("temperature: request.temperature ?? 0.3");
-    expect(provider).toContain("...(Number.isInteger(request.seed) ? { seed: request.seed } : {})");
+    expect(provider).toContain("const providerTemperature = request.temperature ?? 0.3");
+    expect(provider).toContain("temperature: providerTemperature");
+    expect(provider).toContain("...(providerSeed !== null ? { seed: providerSeed } : {})");
     expect(engine).toContain('const PROFESSIONAL_GENERATION_TEMPERATURE_ENV = "NEEDSOPS_PROFESSIONAL_GENERATION_TEMPERATURE"');
     expect(engine).toContain('const PROFESSIONAL_GENERATION_SEED_ENV = "NEEDSOPS_PROFESSIONAL_GENERATION_SEED"');
     expect(engine).toContain("function professionalGenerationSamplingOptions()");
