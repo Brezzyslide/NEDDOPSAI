@@ -33,7 +33,7 @@ import ExecutionInspectorPanel                   from "@/components/inspector/Ex
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WorkStatus = "draft"|"awaiting_approval"|"approved"|"rejected"|"archived"|"superseded"|"reopened";
+type WorkStatus = "draft"|"awaiting_approval"|"approved"|"rejected"|"archived"|"superseded"|"reopened"|"evidence_required";
 
 interface CompletedWorkItem {
   approvedVersionId?: string | null;
@@ -110,6 +110,7 @@ const STATUS_BADGE: Record<WorkStatus, { bg: string; text: string; label: string
   archived:          { bg: "bg-gray-800/60",    text: "text-gray-400",    label: "Archived" },
   superseded:        { bg: "bg-purple-900/40",  text: "text-purple-300",  label: "Superseded" },
   reopened:          { bg: "bg-orange-900/40",  text: "text-orange-300",  label: "Reopened" },
+  evidence_required: { bg: "bg-orange-900/40",  text: "text-orange-300",  label: "Evidence Required" },
 };
 
 const BLOCKED_DRAFT_BADGE = { bg: "bg-red-900/40", text: "text-red-300", label: "Unapproved Draft Blocked" };
@@ -502,6 +503,7 @@ function GeneratedArtifactsPanel({
               type="button"
               onClick={() => onDownload(artifact)}
               disabled={downloadingId === artifact.id}
+              aria-label={`Download ${format} artifact`}
               className="flex items-center justify-between gap-3 rounded-lg border border-[#1E3A5F] bg-[#112033] px-3 py-3 text-left transition-colors hover:border-[#00D4FF]/40 disabled:opacity-60"
             >
               <div className="min-w-0">

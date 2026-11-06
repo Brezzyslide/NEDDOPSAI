@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
 import { Link } from "wouter";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthFetch } from "@/lib/api";
 
@@ -119,9 +120,14 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
     queryFn:   () => apiFetch("/v1/me/organisations").then(r => r.ok ? r.json() : { organisations: [] }),
     staleTime: 5 * 60_000,
   });
-  const orgRole: string =
-    (meOrgsData?.organisations as Array<{ slug: string; role: string }> | undefined)
-      ?.find(o => o.slug === orgSlug)?.role ?? "member";
+  const organisations = (meOrgsData?.organisations ?? []) as Array<{ slug: string; role: string }>;
+  const currentOrg = safeSlug ? organisations.find(o => o.slug === safeSlug) : undefined;
+  const orgRole: string = currentOrg?.role ?? "member";
+
+  useEffect(() => {
+    if (!safeSlug || organisations.length === 0 || currentOrg) return;
+    setLocation(`/app/${organisations[0]!.slug}`);
+  }, [currentOrg, organisations, safeSlug, setLocation]);
 
   // ── Nav visibility matrix ────────────────────────────────────────────────────
   // Library (upload + view sources): member, manager, administrator, owner
@@ -140,9 +146,9 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   const { data: unreadData } = useQuery({
     queryKey:       ["nav-notif-badge", orgSlug],
     queryFn:        () =>
-      apiFetch(`/v1/organisations/${orgSlug}/notifications/unread-count`)
+      apiFetch(`/v1/organisations/${safeSlug}/notifications/unread-count`)
         .then(r => r.ok ? r.json() : { unreadCount: 0 }),
-    enabled:        !!orgSlug && orgSlug !== "undefined",
+    enabled:        !!currentOrg,
     refetchInterval: 60_000,
     staleTime:      30_000,
   });

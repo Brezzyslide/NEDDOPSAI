@@ -674,6 +674,27 @@ function TaskSidePanel({
               <span>Approval</span>
               <span className="text-[#CBD5E1]">{plan.requiresApproval ? plan.approvalType.replace(/_/g, " ") : "None"}</span>
             </div>
+            {plan.steps.length > 0 && (
+              <ol className="mt-3 space-y-2" aria-label="Plan steps">
+                {plan.steps.map(step => (
+                  <li key={`${step.stepNumber}-${step.action}`} className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#00D4FF]">
+                        Step {step.stepNumber}
+                      </span>
+                      {step.requiresApproval && (
+                        <span className="text-[10px] text-amber-300">approval</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-[#E2E8F0] leading-snug">{step.action}</p>
+                    <p className="mt-1 text-[11px] text-[#64748B]">
+                      {step.specialistName || step.specialistCode.replace(/_/g, " ")}
+                      {step.estimatedDuration ? ` · ${step.estimatedDuration}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         </div>
       )}

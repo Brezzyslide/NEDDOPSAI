@@ -26,7 +26,17 @@ import { useAuthFetch }           from "@/lib/api";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type WorkStatus = "draft" | "awaiting_approval" | "approved" | "rejected"
-                | "archived" | "superseded" | "reopened";
+                | "archived" | "superseded" | "reopened" | "evidence_required";
+
+interface GeneratedArtifactSummary {
+  id: string;
+  artifactType: string;
+  fileFormat: "docx" | "pdf" | "xlsx" | string;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  generationStatus: string;
+  createdAt?: string | null;
+}
 
 interface CompletedWorkItem {
   id:                 string;
@@ -41,6 +51,7 @@ interface CompletedWorkItem {
   createdByUserId:    string | null;
   approvedByUserId:   string | null;
   approvalWorkflow?:  Record<string, unknown> | null;
+  generatedArtifacts?: GeneratedArtifactSummary[];
   latestQualityScore?: number | null;
 }
 
@@ -51,6 +62,7 @@ const STATUS_TABS: { key: WorkStatus | "all"; label: string; colour: string }[] 
   { key: "approved",          label: "Approved",          colour: "text-emerald-400" },
   { key: "awaiting_approval", label: "Awaiting Approval", colour: "text-amber-400" },
   { key: "draft",             label: "Draft",             colour: "text-blue-400" },
+  { key: "evidence_required", label: "Evidence Required", colour: "text-orange-400" },
   { key: "rejected",          label: "Rejected",          colour: "text-red-400" },
   { key: "archived",          label: "Archived",          colour: "text-[#64748B]" },
   { key: "superseded",        label: "Superseded",        colour: "text-purple-400" },
@@ -64,6 +76,7 @@ const STATUS_BADGE: Record<WorkStatus, { bg: string; text: string; label: string
   archived:          { bg: "bg-gray-800/60",    text: "text-gray-400",    label: "Archived" },
   superseded:        { bg: "bg-purple-900/40",  text: "text-purple-300",  label: "Superseded" },
   reopened:          { bg: "bg-orange-900/40",  text: "text-orange-300",  label: "Reopened" },
+  evidence_required: { bg: "bg-orange-900/40",  text: "text-orange-300",  label: "Evidence Required" },
 };
 
 const BLOCKED_DRAFT_BADGE = { bg: "bg-red-900/40", text: "text-red-300", label: "Unapproved Draft Blocked" };
@@ -119,6 +132,19 @@ function specIcon(s: string) {
   return icons[s] ?? "🤖";
 }
 
+function artifactFormatLabel(format: string): string {
+  switch (format) {
+    case "docx": return "Word";
+    case "pdf": return "PDF";
+    case "xlsx": return "Excel";
+    default: return format.toUpperCase();
+  }
+}
+
+function downloadableArtifacts(item: CompletedWorkItem): GeneratedArtifactSummary[] {
+  return (item.generatedArtifacts ?? []).filter(artifact => artifact.generationStatus === "stored");
+}
+
 const PINNED_KEY  = (slug: string) => `needsops-pinned-work-${slug}`;
 const RECENT_KEY  = (slug: string) => `needsops-recent-work-${slug}`;
 
@@ -141,18 +167,20 @@ function recordRecent(slug: string, id: string) {
 // ─── Work Card ────────────────────────────────────────────────────────────────
 
 function WorkCard({
-  item, pinned, onPin, onOpen, onDownload,
+  item, pinned, onPin, onOpen, onDownload, onDownloadArtifact,
 }: {
   item: CompletedWorkItem;
   pinned: boolean;
   onPin: (id: string) => void;
   onOpen: (id: string) => void;
   onDownload?: (id: string, format: "pdf" | "docx") => void;
+  onDownloadArtifact?: (item: CompletedWorkItem, artifact: GeneratedArtifactSummary) => void;
 }) {
   const [dlOpen, setDlOpen] = useState(false);
   const badge = isApprovalBlocked(item) ? BLOCKED_DRAFT_BADGE : STATUS_BADGE[item.status] ?? STATUS_BADGE.draft;
   const isApproved = item.status === "approved";
-  const hasDownloadableCompletedWork = Boolean(onDownload);
+  const artifacts = downloadableArtifacts(item);
+  const hasDownloadableCompletedWork = artifacts.length > 0 || Boolean(onDownload);
   const scoreColor = item.latestQualityScore == null ? "" :
     item.latestQualityScore >= 80 ? "text-emerald-300" :
     item.latestQualityScore >= 70 ? "text-amber-300" : "text-red-300";
@@ -222,7 +250,20 @@ function WorkCard({
             Open
           </button>
         )}
-        {hasDownloadableCompletedWork && onDownload && (
+        {artifacts.length > 0 && onDownloadArtifact ? (
+          <div className="flex gap-1.5">
+            {artifacts.map(artifact => (
+              <button
+                key={artifact.id}
+                onClick={() => onDownloadArtifact(item, artifact)}
+                className="px-2.5 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#00D4FF] hover:border-[#00D4FF]/40 transition-colors"
+                aria-label={`Download ${artifactFormatLabel(artifact.fileFormat)} artifact`}
+              >
+                {artifactFormatLabel(artifact.fileFormat)}
+              </button>
+            ))}
+          </div>
+        ) : hasDownloadableCompletedWork && onDownload && (
           <div className="relative">
             <button
               onClick={() => setDlOpen(o => !o)}
@@ -349,6 +390,20 @@ export default function CompletedWorkPortal() {
     } catch { /* silent — user can retry from the viewer */ }
   }
 
+  async function handleArtifactDownload(item: CompletedWorkItem, artifact: GeneratedArtifactSummary) {
+    try {
+      const resp = await apiFetch(`/v1/organisations/${slug}/completed-work/${item.id}/artifacts/${artifact.id}/download`);
+      if (!resp.ok) return;
+      const payload = await resp.json().catch(() => ({}));
+      if (!payload?.downloadUrl) return;
+      const a = document.createElement("a");
+      a.href = payload.downloadUrl;
+      a.download = `${item.title.replace(/[^a-z0-9]/gi, "_")}.${artifact.fileFormat}`;
+      a.rel = "noopener noreferrer";
+      a.click();
+    } catch { /* silent — user can retry from the viewer */ }
+  }
+
   return (
     <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>
       <AppShell orgSlug={slug ?? ""}>
@@ -465,7 +520,7 @@ export default function CompletedWorkPortal() {
                 <h2 className="text-[#64748B] text-xs uppercase tracking-widest mb-3">📌 Pinned</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {pinned.map(item => (
-                    <WorkCard key={item.id} item={item} pinned onPin={handlePin} onOpen={openWork} onDownload={handleDownload} />
+                    <WorkCard key={item.id} item={item} pinned onPin={handlePin} onOpen={openWork} onDownload={handleDownload} onDownloadArtifact={handleArtifactDownload} />
                   ))}
                 </div>
               </section>
@@ -478,7 +533,7 @@ export default function CompletedWorkPortal() {
                 <div className="flex gap-4 overflow-x-auto pb-1">
                   {recent.slice(0, 4).map(item => (
                     <div key={item.id} className="shrink-0 w-64">
-                      <WorkCard item={item} pinned={pinnedIds.includes(item.id)} onPin={handlePin} onOpen={openWork} onDownload={handleDownload} />
+                      <WorkCard item={item} pinned={pinnedIds.includes(item.id)} onPin={handlePin} onOpen={openWork} onDownload={handleDownload} onDownloadArtifact={handleArtifactDownload} />
                     </div>
                   ))}
                 </div>
@@ -522,6 +577,7 @@ export default function CompletedWorkPortal() {
                       onPin={handlePin}
                       onOpen={openWork}
                       onDownload={handleDownload}
+                      onDownloadArtifact={handleArtifactDownload}
                     />
                   ))}
                 </div>

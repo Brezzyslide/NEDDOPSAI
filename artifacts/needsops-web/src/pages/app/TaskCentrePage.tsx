@@ -30,6 +30,9 @@ interface CreateTaskBody {
   title: string;
   description?: string;
   priority: string;
+  originatingModule?: string;
+  allowDuplicate?: boolean;
+  sourceUserRequest?: string;
   subjectParticipantIds?: string[];
 }
 
@@ -83,6 +86,7 @@ export default function TaskCentrePage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newPriority, setNewPriority] = useState<string>("normal");
+  const [carePlanParticipantId, setCarePlanParticipantId] = useState("");
   const [participantResolution, setParticipantResolution] = useState<ParticipantResolutionState | null>(null);
   const [pendingCreateBody, setPendingCreateBody] = useState<CreateTaskBody | null>(null);
 
@@ -136,11 +140,26 @@ export default function TaskCentrePage() {
         return;
       }
       clearCreateForm();
+      setCarePlanParticipantId("");
       qc.invalidateQueries({ queryKey: ["tasks", slug] });
     },
   });
 
   const tasks: any[] = data?.tasks ?? [];
+  const createParticipantCarePlan = () => {
+    const participantId = carePlanParticipantId.trim();
+    if (!participantId) return;
+    const requestText = "Create a participant-specific care plan.";
+    createMutation.mutate({
+      title: "Create participant-specific care plan",
+      description: requestText,
+      priority: "normal",
+      originatingModule: "task_centre_direct_care_plan",
+      allowDuplicate: true,
+      sourceUserRequest: requestText,
+      subjectParticipantIds: [participantId],
+    });
+  };
 
   return (
     <AppShell orgSlug={slug ?? ""}>
@@ -161,6 +180,32 @@ export default function TaskCentrePage() {
           >
             + New Task
           </button>
+        </div>
+
+        <div className="mb-6 bg-[#112033] border border-[#1E3A5F] rounded-xl p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex-1">
+              <h2 className="text-[#E2E8F0] font-semibold text-sm">Create participant care plan</h2>
+              <p className="text-[#64748B] text-xs mt-1">
+                Starts a fresh care-plan task directly with the selected participant already bound.
+              </p>
+              <label className="text-[#64748B] text-xs mt-3 mb-1 block">Participant ID</label>
+              <input
+                value={carePlanParticipantId}
+                onChange={e => setCarePlanParticipantId(e.target.value)}
+                placeholder="Paste participant id"
+                className="w-full max-w-xl bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] placeholder-[#64748B] focus:outline-none focus:border-[#00D4FF]/50"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={createParticipantCarePlan}
+              disabled={!carePlanParticipantId.trim() || createMutation.isPending}
+              className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
+            >
+              {createMutation.isPending ? "Creating…" : "Create care plan"}
+            </button>
+          </div>
         </div>
 
         {/* Create task panel */}
