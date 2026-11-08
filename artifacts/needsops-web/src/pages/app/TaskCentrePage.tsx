@@ -26,6 +26,14 @@ interface ParticipantResolutionState {
   candidates?: ParticipantResolutionCandidate[];
 }
 
+interface ParticipantOption {
+  id: string;
+  displayName?: string | null;
+  preferredName?: string | null;
+  externalParticipantId?: string | null;
+  status?: string | null;
+}
+
 interface CreateTaskBody {
   title: string;
   description?: string;
@@ -86,7 +94,7 @@ export default function TaskCentrePage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newPriority, setNewPriority] = useState<string>("normal");
-  const [carePlanParticipantId, setCarePlanParticipantId] = useState("");
+  const [selectedCarePlanParticipantId, setSelectedCarePlanParticipantId] = useState("");
   const [participantResolution, setParticipantResolution] = useState<ParticipantResolutionState | null>(null);
   const [pendingCreateBody, setPendingCreateBody] = useState<CreateTaskBody | null>(null);
 
@@ -97,6 +105,18 @@ export default function TaskCentrePage() {
     queryFn: () =>
       apiFetch(`/v1/organisations/${slug}/tasks?state=${currentTab.states.join(",")}`).then(r => r.json()),
     enabled: !!slug,
+  });
+
+  const participantsQuery = useQuery({
+    queryKey: ["task-centre-participants", slug],
+    queryFn: async () => {
+      const response = await apiFetch(`/v1/organisations/${slug}/participants?limit=200`);
+      if (!response.ok) throw new Error("Failed to load participants");
+      const payload = await response.json();
+      return (payload?.participants ?? []) as ParticipantOption[];
+    },
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 60_000,
   });
 
   const clearCreateForm = () => {
@@ -140,15 +160,14 @@ export default function TaskCentrePage() {
         return;
       }
       clearCreateForm();
-      setCarePlanParticipantId("");
+      setSelectedCarePlanParticipantId("");
       qc.invalidateQueries({ queryKey: ["tasks", slug] });
     },
   });
 
   const tasks: any[] = data?.tasks ?? [];
   const createParticipantCarePlan = () => {
-    const participantId = carePlanParticipantId.trim();
-    if (!participantId) return;
+    if (!selectedCarePlanParticipantId) return;
     const requestText = "Create a participant-specific care plan.";
     createMutation.mutate({
       title: "Create participant-specific care plan",
@@ -157,9 +176,19 @@ export default function TaskCentrePage() {
       originatingModule: "task_centre_direct_care_plan",
       allowDuplicate: true,
       sourceUserRequest: requestText,
-      subjectParticipantIds: [participantId],
+      subjectParticipantIds: [selectedCarePlanParticipantId],
     });
   };
+
+  const participantOptions = participantsQuery.data ?? [];
+  const selectedCarePlanParticipant = participantOptions.find(
+    participant => participant.id === selectedCarePlanParticipantId,
+  );
+  const canCreateCarePlan =
+    Boolean(selectedCarePlanParticipantId) &&
+    !participantsQuery.isLoading &&
+    !participantsQuery.isError &&
+    !createMutation.isPending;
 
   return (
     <AppShell orgSlug={slug ?? ""}>
@@ -189,18 +218,46 @@ export default function TaskCentrePage() {
               <p className="text-[#64748B] text-xs mt-1">
                 Starts a fresh care-plan task directly with the selected participant already bound.
               </p>
-              <label className="text-[#64748B] text-xs mt-3 mb-1 block">Participant ID</label>
-              <input
-                value={carePlanParticipantId}
-                onChange={e => setCarePlanParticipantId(e.target.value)}
-                placeholder="Paste participant id"
-                className="w-full max-w-xl bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] placeholder-[#64748B] focus:outline-none focus:border-[#00D4FF]/50"
-              />
+              <label className="text-[#64748B] text-xs mt-3 mb-1 block" htmlFor="care-plan-participant">
+                Participant
+              </label>
+              <select
+                id="care-plan-participant"
+                value={selectedCarePlanParticipantId}
+                onChange={e => setSelectedCarePlanParticipantId(e.target.value)}
+                disabled={participantsQuery.isLoading || participantsQuery.isError || participantOptions.length === 0}
+                className="w-full max-w-xl bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50 disabled:opacity-50"
+              >
+                <option value="">
+                  {participantsQuery.isLoading
+                    ? "Loading participants..."
+                    : participantOptions.length === 0
+                      ? "No participants available"
+                      : "Select a participant"}
+                </option>
+                {participantOptions.map(participant => {
+                  const label = participant.displayName ?? participant.preferredName ?? "Unnamed participant";
+                  const external = participant.externalParticipantId ? ` (${participant.externalParticipantId})` : "";
+                  return (
+                    <option key={participant.id} value={participant.id}>
+                      {label}{external}
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedCarePlanParticipant && (
+                <p className="text-[#64748B] text-xs mt-1">
+                  Bound participant ID: <span className="font-mono text-[#00D4FF]">{selectedCarePlanParticipant.id}</span>
+                </p>
+              )}
+              {participantsQuery.isError && (
+                <p className="text-red-400 text-xs mt-1">Could not load participants.</p>
+              )}
             </div>
             <button
               type="button"
               onClick={createParticipantCarePlan}
-              disabled={!carePlanParticipantId.trim() || createMutation.isPending}
+              disabled={!canCreateCarePlan}
               className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
             >
               {createMutation.isPending ? "Creating…" : "Create care plan"}
