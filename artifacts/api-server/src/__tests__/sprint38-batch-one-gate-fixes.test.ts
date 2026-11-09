@@ -1211,7 +1211,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
     const section = buildGenerationFailedDeclaredInstrumentSection(
       "care-plan-undertaking-adl",
       "Undertaking ADL",
-      "Batch adl was truncated at the configured output limit (6500 tokens) before all target sections were completed.",
+      "Batch adl was truncated at the configured output limit (12000 tokens) before all target sections were completed.",
       { failureKind: "generation_truncated" },
     );
     const markdown = assembleDeliverableMarkdownFromSections([section], ["care-plan-undertaking-adl"]);
@@ -1219,7 +1219,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
 
     expect(section.evidenceGaps).toEqual([{
       category: "generation_truncated",
-      reason: "Batch adl was truncated at the configured output limit (6500 tokens) before all target sections were completed.",
+      reason: "Batch adl was truncated at the configured output limit (12000 tokens) before all target sections were completed.",
     }]);
     expect(markdown).toContain("Generation truncated");
     expect(markdown).toContain("generation_truncated");

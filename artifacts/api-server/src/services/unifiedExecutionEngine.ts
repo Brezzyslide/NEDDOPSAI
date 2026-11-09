@@ -7468,20 +7468,8 @@ function buildCarePlanBatchDirective(
   ].join("\n");
 }
 
-function carePlanBatchOutputBudget(batch: CarePlanBatch): number {
-  switch (batch.id) {
-    case "participant-planning-basis": return 4500;
-    case "goals": return 5000;
-    case "adl": return 8000;
-    case "mobility": return 6500;
-    case "communication": return 6500;
-    case "support-delivery": return 6500;
-    case "disaster-management": return 4500;
-    case "behavioural-management": return 9000;
-    case "restrictive-practices": return 5000;
-    case "specialist-admin": return 4500;
-    default: return 4500;
-  }
+function carePlanBatchOutputBudget(_batch: CarePlanBatch): number {
+  return 12000;
 }
 
 function formatCarePlanBatchProviderFailure(batch: CarePlanBatch, error: unknown, elapsedMs: number): string {
