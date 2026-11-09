@@ -4096,12 +4096,6 @@ function renderIncompleteDraftHeader(input: {
       lines.push(`  - ${plainCompletionFailureDetail(detail)}`);
     }
   }
-  if (input.suppressionRecords.length > 0) {
-    lines.push("", "## Suppressed Unsupported Claims", "");
-    for (const record of input.suppressionRecords) {
-      lines.push(`- ${record.section}: "${normaliseInlineForNotice(record.claim)}" was not rendered because ${normaliseInlineForNotice(record.reason)}.`);
-    }
-  }
   lines.push("", "## Draft Content", "");
   return lines.join("\n");
 }
@@ -4236,7 +4230,7 @@ function applyDeterministicEvidenceGapReplacements(input: {
           return {
             ...row,
             supportLevel: "Not applicable / not assessed",
-            workerDescription: "No functional assessment on file for this activity.",
+            workerDescription: absenceWorkerDescriptionForRequirement(failure.requirementId, row.activity),
             sourceValue: "Absent",
             chunkId: "not-recorded-in-retrieved-evidence",
             mappingMode: "NOT_ASSESSED" as const,
@@ -4292,6 +4286,27 @@ function applyDeterministicEvidenceGapReplacements(input: {
     deliverableSections: sections,
     replacements,
   };
+}
+
+function absenceWorkerDescriptionForRequirement(requirementId: string, fieldName?: string): string {
+  if (requirementId === "care-plan-undertaking-adl") {
+    return fieldName
+      ? `No ADL assessment on file for ${fieldName}.`
+      : "No ADL assessment on file for this activity.";
+  }
+  if (requirementId === "care-plan-goals") {
+    return fieldName
+      ? `No goal evidence on file for ${fieldName}.`
+      : "No goal evidence on file.";
+  }
+  if (requirementId === "care-plan-mobility-strategy") {
+    return fieldName
+      ? `No mobility evidence on file for ${fieldName}.`
+      : "No mobility evidence on file.";
+  }
+  return fieldName
+    ? `No supporting evidence on file for ${fieldName}.`
+    : "No supporting evidence on file.";
 }
 
 function replaceParticipantModeBracketPlaceholders(content: string): string {
@@ -5439,7 +5454,7 @@ function formatParticipantSpecificOutputContract(
     sectionLines,
     "Populate every section from retrieved evidence and cite the source document.",
     "Every participant-mode structured row, capacity level, functional assessment, selected support type, goal action, goal outcome, behavioural strategy, restrictive-practice status and person-centred statement is a claim. Each such claim must be linked to an evidenceSource with chunkId, documentTitle, passage and location, or must be explicitly marked as not assessed/not recorded with the missing source document named.",
-    "For ADL, mobility, support delivery and goals specifically: do not assert a capacity level, functional assessment, support type, goal action or outcome unless retrieved evidence supports it. If an item is unassessed, write: \"Not assessed — no functional assessment on file\" or the equivalent specific missing-source statement.",
+    "For ADL, mobility, support delivery and goals specifically: do not assert a capacity level, functional assessment, support type, goal action or outcome unless retrieved evidence supports it. Use absence wording that fits the section: ADL assessment missing, mobility evidence missing, goal evidence missing, or the generic \"not recorded in retrieved evidence\". Do not use ADL/functional-assessment wording for Goals actions, Goals person responsible, Support Delivery or other non-ADL fields.",
     "For Undertaking ADL: return exactly 26 structuredRows, one for each canonical ADL activity row assembled by the server. Do not add, omit or rename ADL activities. Each row must carry activity, supportLevel, workerDescription, sourceValue, chunkId and mappingMode.",
     "ADL intake-checklist mapping: Without support -> Independent; Completely unable to -> Unable to complete; Support required -> Independent with prompting, Independent with supervision or Partial physical assistance, chosen from other cited evidence and defaulting to the least restrictive supported level; Absent -> Not applicable / not assessed.",
     "ADL source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing; Comb/brush hair and Shaving -> Personal hygiene and grooming; Dressing -> Dressing and undressing; Use toilet and Post toilet hygiene -> Toileting and continence; Cooking -> Meal preparation; Cleaning and Washing dishes -> Household cleaning; Transfer to/from bed -> Transfers and positioning; Money handling -> Money handling and everyday purchases; Walk without aid -> Mobility within the home; Use public transport -> Transport and travel. If several source items map to one row and disagree, use the highest support level and name the differing parts in workerDescription.",
@@ -7454,13 +7469,19 @@ function buildCarePlanBatchDirective(
 }
 
 function carePlanBatchOutputBudget(batch: CarePlanBatch): number {
-  if (batch.id === "adl") return 8000;
-  if (batch.id === "behavioural-management") return 9000;
-  if (batch.id === "communication") return 6500;
-  if (batch.id === "support-delivery") return 6500;
-  if (batch.id === "goals") return 5000;
-  if (batch.id === "restrictive-practices") return 5000;
-  return 4500;
+  switch (batch.id) {
+    case "participant-planning-basis": return 4500;
+    case "goals": return 5000;
+    case "adl": return 8000;
+    case "mobility": return 6500;
+    case "communication": return 6500;
+    case "support-delivery": return 6500;
+    case "disaster-management": return 4500;
+    case "behavioural-management": return 9000;
+    case "restrictive-practices": return 5000;
+    case "specialist-admin": return 4500;
+    default: return 4500;
+  }
 }
 
 function formatCarePlanBatchProviderFailure(batch: CarePlanBatch, error: unknown, elapsedMs: number): string {

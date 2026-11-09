@@ -6,7 +6,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import CompletedWorkPortal from "../CompletedWorkPortal";
 import CompletedWorkViewer from "../CompletedWorkViewer";
 import TaskCentrePage from "../TaskCentrePage";
-import TaskWorkroomPage from "../TaskWorkroomPage";
+import TaskWorkroomPage, { shouldPollWorkroom } from "../TaskWorkroomPage";
 
 const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -172,6 +172,9 @@ describe("care-plan UI end to end affordances", () => {
 
     renderWithClient(<TaskCentrePage />);
 
+    expect(screen.queryByRole("button", { name: "+ New Task" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Create New Task")).not.toBeInTheDocument();
+
     const createButton = await screen.findByRole("button", { name: "Create care plan" });
     expect(createButton).toBeDisabled();
 
@@ -212,7 +215,7 @@ describe("care-plan UI end to end affordances", () => {
     ]);
   });
 
-  it("renders workroom state and the concrete plan steps returned by the workroom payload", async () => {
+  it("renders workroom state and concrete plan steps without polling terminal tasks", async () => {
     mocks.routeParams = { slug: "mhr-holdings-pty-ltd", taskId: "task-1" };
     const requestedPaths: string[] = [];
     mocks.apiFetch.mockImplementation(async (path: string) => {
@@ -222,7 +225,7 @@ describe("care-plan UI end to end affordances", () => {
           id: "task-1",
           title: "Create care plan",
           description: "Participant care plan",
-          currentState: "executing",
+          currentState: "evidence_required",
           priority: "normal",
           approvalState: "not_required",
           createdAt: "2026-11-01T00:00:00.000Z",
@@ -251,11 +254,15 @@ describe("care-plan UI end to end affordances", () => {
 
     renderWithClient(<TaskWorkroomPage />);
 
-    expect(await screen.findByText(/Executing/)).toBeInTheDocument();
+    expect(await screen.findByText(/Evidence Required/)).toBeInTheDocument();
     expect(screen.getByText("Gather participant evidence")).toBeInTheDocument();
     expect(screen.getByText("Draft care plan")).toBeInTheDocument();
     expect(requestedPaths).toEqual([
       "/v1/organisations/mhr-holdings-pty-ltd/tasks/task-1/workroom",
     ]);
+    expect(shouldPollWorkroom("evidence_required")).toBe(false);
+    expect(shouldPollWorkroom("failed")).toBe(false);
+    expect(shouldPollWorkroom("completed")).toBe(false);
+    expect(shouldPollWorkroom("executing")).toBe(true);
   });
 });

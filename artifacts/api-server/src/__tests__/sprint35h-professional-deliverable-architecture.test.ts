@@ -1598,7 +1598,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(uee).toContain("workerDescription: derivedGuidance.text");
     expect(uee).toContain("Recorded support level: Independent.");
     expect(uee).not.toContain("workers should not provide hands-on help unless he asks or safety changes");
-    expect(uee).toContain("No functional assessment on file for this activity.");
+    expect(uee).toContain("No ADL assessment on file for this activity.");
+    expect(uee).toContain("No goal evidence on file for");
+    expect(uee).toContain("Do not use ADL/functional-assessment wording for Goals actions");
     expect(uee).toContain("No mealtime support requirements are recorded in the retrieved evidence.");
     expect(uee).toContain("Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}");
     expect(uee).toContain("CARE_PLAN_SYSTEM_FORM_ID");

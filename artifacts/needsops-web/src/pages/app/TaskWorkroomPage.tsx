@@ -21,6 +21,12 @@ type TaskState =
   | "evidence_required"
   | "approved" | "executing" | "completed" | "cancelled" | "failed";
 
+const TERMINAL_WORKROOM_STATES: TaskState[] = ["completed", "cancelled", "failed", "evidence_required"];
+
+export function shouldPollWorkroom(state?: TaskState | null): boolean {
+  return !state || !TERMINAL_WORKROOM_STATES.includes(state);
+}
+
 type MessageSenderType = "user" | "chief_of_staff" | "workforce_role" | "runtime" | "system";
 type MessageType =
   | "text" | "question" | "clarification_request" | "task_proposal" | "task_created"
@@ -880,7 +886,10 @@ export default function TaskWorkroomPage() {
       return d;
     },
     enabled: !!slug && !!taskId,
-    refetchInterval: 15_000, // poll for execution updates
+    refetchInterval: query => {
+      const workroom = query.state.data as { task?: Task } | undefined;
+      return shouldPollWorkroom(workroom?.task?.currentState ?? null) ? 15_000 : false;
+    },
   });
 
   const task: Task | undefined = data?.task;
