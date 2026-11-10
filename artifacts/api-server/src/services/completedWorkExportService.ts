@@ -24,8 +24,10 @@ import PDFDocument      from "pdfkit";
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow,
   TableCell, WidthType, BorderStyle, AlignmentType, UnderlineType,
-  Footer, PageBreak, PageNumber, SimpleField,
+  Footer, PageBreak, PageNumber,
 } from "docx";
+import { sql } from "drizzle-orm";
+import { db, withSystemTenantContext } from "@workspace/db";
 import { getCompletedWork, getVersions, resolveApprovedVersion } from "./completedWorkService.js";
 import { logOrgEvent }                   from "./auditService.js";
 import { normaliseCompletedWorkContent } from "./completedWorkNormaliser.js";
@@ -280,13 +282,144 @@ function isGenerationNarrationLine(line: string): boolean {
   );
 }
 
+type DbClient = typeof db;
+
+interface StructuredCarePlanMetadataInput {
+  workId: string;
+  organisationId: string;
+  title: string;
+  generatedDate: string;
+  nodes: DocumentNode[];
+}
+
+interface ParticipantCoverRecord {
+  displayName: string | null;
+  preferredName: string | null;
+  externalParticipantId: string | null;
+  metadata: unknown;
+}
+
+function withCompletedWorkExportTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "completed_work_export_service", purpose },
+    fn,
+  );
+}
+
+async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadataInput): Promise<CarePlanDocumentMetadata> {
+  const declaredFields = buildCarePlanMetadata({
+    title: input.title,
+    generatedDate: input.generatedDate,
+    nodes: input.nodes,
+  });
+  const participant = await resolveBoundSubjectParticipantForCompletedWork(input.organisationId, input.workId);
+  if (!participant) return declaredFields;
+
+  return {
+    participantName: firstNonEmpty(
+      participant.displayName,
+      participant.preferredName,
+      declaredFields.participantName,
+    ) ?? "Participant not recorded",
+    ndisNumber: firstNonEmpty(
+      participant.externalParticipantId,
+      findParticipantMetadataValue(participant.metadata, [
+        "ndisNumber",
+        "ndis_number",
+        "ndisParticipantNumber",
+        "ndis_participant_number",
+        "participantNdisNumber",
+      ]),
+      declaredFields.ndisNumber,
+    ) ?? "Not recorded",
+    dateOfBirth: firstNonEmpty(
+      findParticipantMetadataValue(participant.metadata, [
+        "dateOfBirth",
+        "date_of_birth",
+        "dob",
+        "birthDate",
+        "birth_date",
+      ]),
+      declaredFields.dateOfBirth,
+    ) ?? "Not recorded",
+    planDate: declaredFields.planDate,
+    reviewDate: declaredFields.reviewDate,
+  };
+}
+
+async function resolveBoundSubjectParticipantForCompletedWork(
+  organisationId: string,
+  completedWorkId: string,
+): Promise<ParticipantCoverRecord | null> {
+  const result = await withCompletedWorkExportTenant(
+    organisationId,
+    "completed_work.export.subject_participant",
+    async (client) => client.execute(sql`
+      SELECT
+        p.display_name AS "displayName",
+        p.preferred_name AS "preferredName",
+        p.external_participant_id AS "externalParticipantId",
+        p.metadata AS "metadata"
+      FROM execution_sessions es
+      INNER JOIN task_participants tp
+        ON tp.task_id = es.task_id
+       AND tp.organization_id = es.organization_id
+       AND tp.role = 'subject'
+      INNER JOIN participants p
+        ON p.id = tp.participant_id
+       AND p.organization_id = es.organization_id
+       AND p.deleted_at IS NULL
+      WHERE es.organization_id = ${organisationId}
+        AND es.metadata->>'completedWorkId' = ${completedWorkId}
+      ORDER BY es.created_at DESC
+      LIMIT 1
+    `),
+  );
+  const rows = Array.isArray((result as { rows?: unknown[] }).rows)
+    ? (result as { rows: ParticipantCoverRecord[] }).rows
+    : [];
+  return rows[0] ?? null;
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const clean = typeof value === "string" ? value.trim() : "";
+    if (clean && !/^not recorded$/i.test(clean) && !/^participant not recorded$/i.test(clean)) return clean;
+  }
+  return null;
+}
+
+function findParticipantMetadataValue(metadata: unknown, keys: string[]): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const wanted = new Set(keys.map(normaliseMetadataKey));
+  const stack: unknown[] = [metadata];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object") continue;
+    if (Array.isArray(current)) {
+      for (const item of current) stack.push(item);
+      continue;
+    }
+    for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+      if (wanted.has(normaliseMetadataKey(key)) && typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+      if (value && typeof value === "object") stack.push(value);
+    }
+  }
+  return null;
+}
+
 function buildCarePlanMetadata(doc: {
   title: string;
   generatedDate: string;
   nodes: DocumentNode[];
 }): CarePlanDocumentMetadata {
-  const valueByKey = new Map<string, string>();
-  for (const node of doc.nodes) collectMetadataValues(node, valueByKey);
+  const valueByKey = collectSupportPlanMeetingMetadata(doc.nodes);
 
   return {
     participantName: firstMetadataValue(valueByKey, [
@@ -316,6 +449,26 @@ function buildCarePlanMetadata(doc: {
       "scheduled review date",
     ]) || "Not recorded",
   };
+}
+
+function collectSupportPlanMeetingMetadata(nodes: DocumentNode[]): Map<string, string> {
+  const valueByKey = new Map<string, string>();
+  const supportPlanNodes = nodesForHeading(nodes, /support plan meeting/i);
+  for (const node of supportPlanNodes) collectMetadataValues(node, valueByKey);
+  return valueByKey;
+}
+
+function nodesForHeading(nodes: DocumentNode[], pattern: RegExp): DocumentNode[] {
+  const start = nodes.findIndex(node => node.type === "heading" && pattern.test(node.content ?? ""));
+  if (start < 0) return [];
+  const headingLevel = nodes[start]?.level ?? 1;
+  const scoped: DocumentNode[] = [];
+  for (let i = start + 1; i < nodes.length; i++) {
+    const node = nodes[i]!;
+    if (node.type === "heading" && (node.level ?? 1) <= headingLevel) break;
+    scoped.push(node);
+  }
+  return scoped;
 }
 
 function collectMetadataValues(node: DocumentNode, values: Map<string, string>): void {
@@ -425,13 +578,9 @@ export class PdfExporter {
 
       renderPdfCover(pdf, doc);
       pdf.addPage();
-      const tocPageIndex = (pdf as any)._pageBuffer?.length ? ((pdf as any)._pageBuffer.length - 1) : 1;
-      renderPdfTocPlaceholder(pdf);
-      pdf.addPage();
 
       // ── Document nodes ──────────────────────────────────────────────────────
       const HEADING_SIZES: Record<number, number> = { 1: 16, 2: 13, 3: 11, 4: 10 };
-      const headingEntries: Array<{ title: string; page: number; level: number }> = [];
       let sectionNumber = 0;
 
       for (const node of doc.nodes) {
@@ -443,8 +592,6 @@ export class PdfExporter {
             const display = level === 1
               ? `${++sectionNumber}. ${node.content ?? ""}`
               : node.content ?? "";
-            const range = pdf.bufferedPageRange?.() ?? { start: 0, count: 1 };
-            headingEntries.push({ title: display, page: range.count, level });
             pdf.fillColor("#17324D").font("Helvetica-Bold").fontSize(sz).text(display, {
               continued: false,
             });
@@ -536,8 +683,6 @@ export class PdfExporter {
         }
       }
 
-      renderPdfTableOfContents(pdf, tocPageIndex, headingEntries);
-
       // ── Footer on each page ─────────────────────────────────────────────────
       const pageCount = (pdf as any)._pageBuffer?.length ?? 1;
       const range = pdf.bufferedPageRange?.() ?? { start: 0, count: pageCount };
@@ -601,31 +746,6 @@ function renderPdfCover(pdf: PDFKit.PDFDocument, doc: IntermediateDocument): voi
     pdf.y,
     { width: tableWidth, align: "center" },
   );
-}
-
-function renderPdfTocPlaceholder(pdf: PDFKit.PDFDocument): void {
-  pdf.fillColor("#17324D").font("Helvetica-Bold").fontSize(18).text("Table of Contents");
-  pdf.moveDown(0.6);
-  pdf.fillColor("#6B7280").font("Helvetica").fontSize(10).text("The contents below are generated from the numbered care-plan sections.");
-}
-
-function renderPdfTableOfContents(
-  pdf: PDFKit.PDFDocument,
-  pageIndex: number,
-  headings: Array<{ title: string; page: number; level: number }>,
-): void {
-  pdf.switchToPage(pageIndex);
-  pdf.y = 144;
-  for (const entry of headings.filter(item => item.level <= 2).slice(0, 40)) {
-    const indent = entry.level === 1 ? 0 : 18;
-    const titleWidth = pdf.page.width - 144 - indent - 50;
-    pdf.fillColor("#111827")
-      .font(entry.level === 1 ? "Helvetica-Bold" : "Helvetica")
-      .fontSize(entry.level === 1 ? 10 : 9)
-      .text(entry.title, 72 + indent, pdf.y, { width: titleWidth, continued: false });
-    pdf.text(String(entry.page), pdf.page.width - 112, pdf.y - 12, { width: 40, align: "right" });
-    pdf.moveDown(0.35);
-  }
 }
 
 function renderPdfFooter(
@@ -729,14 +849,6 @@ export class DocxExporter {
       new Paragraph({
         children: [new TextRun({ text: "Confidential participant care document. For authorised MH&R use only.", italics: true })],
         alignment: AlignmentType.CENTER,
-      }),
-      new Paragraph({ children: [new PageBreak()] }),
-      new Paragraph({
-        text: "Table of Contents",
-        heading: HeadingLevel.HEADING_1,
-      }),
-      new Paragraph({
-        children: [new SimpleField('TOC \\o "1-3" \\h \\z \\u', "Right-click and update field to refresh page numbers.")],
       }),
       new Paragraph({ children: [new PageBreak()] }),
     );
@@ -1266,6 +1378,15 @@ export class CompletedWorkExportService {
     // human-readable markdown so exporters never see raw braces or property names.
     const normalised = normaliseCompletedWorkContent(clientArtifactMarkdown);
     const nodes      = parseMarkdown(normalised);
+    const carePlanMetadata = ["pdf", "docx"].includes(format)
+      ? await buildStructuredCarePlanMetadata({
+          workId,
+          organisationId,
+          title: work.title,
+          generatedDate,
+          nodes,
+        })
+      : buildCarePlanMetadata({ title: work.title, generatedDate, nodes });
 
     const intermediateDoc: IntermediateDocument = {
       title:          work.title,
@@ -1275,7 +1396,7 @@ export class CompletedWorkExportService {
       approvalStatus: formatApprovalStatus(work.status),
       version:        resolvedVersion.versionNumber,
       nodes,
-      carePlanMetadata: buildCarePlanMetadata({ title: work.title, generatedDate, nodes }),
+      carePlanMetadata,
       draftNotice: exportDraftNoticeMetadata(work),
     };
 

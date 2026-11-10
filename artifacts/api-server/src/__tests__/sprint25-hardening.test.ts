@@ -65,6 +65,7 @@ function resetChain() {
   for (const k of ["from","where","set","orderBy","limit","offset","values"] as const) {
     mockDb[k].mockReturnValue(mockDb);
   }
+  mockDb.execute.mockResolvedValue({ rows: [] });
   (mockDb as any).logOrgEvent?.mockResolvedValue?.(undefined);
 }
 
@@ -494,6 +495,14 @@ describe("DocxExporter", () => {
 });
 
 describe("client-facing care-plan artifacts", () => {
+  const carePlanMetadata = {
+    participantName: "Michael Rocca",
+    ndisNumber: "430000000",
+    dateOfBirth: "1 January 1980",
+    planDate: "3 August 2026",
+    reviewDate: "1 January 2027",
+  };
+
   const apparatusMarkdown = [
     "# Unapproved Incomplete Draft",
     "",
@@ -549,6 +558,7 @@ describe("client-facing care-plan artifacts", () => {
       title: "Care Plan for Michael Rocca",
       organisation: "MH&R Holdings Pty Ltd",
       nodes: parseMarkdown(prepareClientArtifactMarkdown(apparatusMarkdown)),
+      carePlanMetadata,
       draftNotice: {
         blocked: true,
         message: "This document is an unapproved draft.",
@@ -559,7 +569,8 @@ describe("client-facing care-plan artifacts", () => {
     expect((xml.match(/UNAPPROVED DRAFT/g) ?? [])).toHaveLength(1);
     expect(xml).toContain("Michael Rocca");
     expect(xml).toContain("430000000");
-    expect(xml).toContain("Table of Contents");
+    expect(xml).not.toContain("Table of Contents");
+    expect(xml).not.toContain("Right-click and update field");
     expect(xml).toContain("No goal evidence on file for Actions.");
     expect(xml).not.toContain("Completion Checks Not Passed");
     expect(xml).not.toContain("Unsatisfied Requirements");
@@ -574,6 +585,7 @@ describe("client-facing care-plan artifacts", () => {
       title: "Care Plan for Michael Rocca",
       organisation: "MH&R Holdings Pty Ltd",
       nodes: parseMarkdown(prepareClientArtifactMarkdown(apparatusMarkdown)),
+      carePlanMetadata,
       draftNotice: {
         blocked: true,
         message: "This document is an unapproved draft.",
@@ -586,7 +598,8 @@ describe("client-facing care-plan artifacts", () => {
     expect((parsed.text.match(/UNAPPROVED DRAFT/g) ?? [])).toHaveLength(1);
     expect(parsed.text).toContain("Michael Rocca");
     expect(parsed.text).toContain("430000000");
-    expect(parsed.text).toContain("Table of Contents");
+    expect(parsed.text).not.toContain("Table of Contents");
+    expect(parsed.text).not.toContain("Right-click and update field");
     expect(parsed.text).toContain("No goal evidence on file for Actions.");
     expect(parsed.text).not.toContain("Completion Checks Not Passed");
     expect(parsed.text).not.toContain("Unsatisfied Requirements");
@@ -643,6 +656,44 @@ describe("CompletedWorkExportService", () => {
       createdByUserId: "user-1",
       createdAt: new Date(),
     }]);
+  }
+
+  function setupDbWithCarePlanWork(contentMarkdown: string, status = "draft") {
+    mockDb.limit.mockResolvedValue([{
+      id: "work-1",
+      organizationId: "org-1",
+      title: "Care Plan for Michael Rocca",
+      primarySpecialist: "care_coordinator",
+      status,
+      blueprintId: null, manifestId: null, conversationId: null,
+      currentVersionId: "ver-1",
+      createdByUserId: "user-1", approvedByUserId: null,
+      approvedAt: null, rejectedAt: null, archivedAt: null,
+      reopenedAt: null, supersededById: null,
+      createdAt: new Date(), updatedAt: new Date(),
+      approvalWorkflow: {},
+    }]);
+    mockDb.orderBy.mockResolvedValue([{
+      id: "ver-1",
+      completedWorkId: "work-1",
+      organizationId: "org-1",
+      versionNumber: 1,
+      contentMarkdown,
+      qualityScore: 88,
+      reviewDimensions: [],
+      changeNote: "Initial",
+      isAutoRevision: "false",
+      createdByUserId: "user-1",
+      createdAt: new Date(),
+    }]);
+    mockDb.execute.mockResolvedValue({
+      rows: [{
+        displayName: "Michael Rocca",
+        preferredName: null,
+        externalParticipantId: "430000000",
+        metadata: { dateOfBirth: "1 January 1980" },
+      }],
+    });
   }
 
   it("exports markdown and returns correct mimeType", async () => {
@@ -705,6 +756,54 @@ describe("CompletedWorkExportService", () => {
     });
     const call = (logOrgEvent as any).mock.calls[0][0];
     expect(call.metadata.format).toBe("docx");
+  });
+
+  it("uses the bound participant record for DOCX and PDF cover values", async () => {
+    const carePlanMarkdown = [
+      "# Michael Rocca Care Plan",
+      "",
+      "## Support Plan Meeting",
+      "",
+      "| Field | Value |",
+      "| --- | --- |",
+      "| Client name | Not recorded ### Service manager contact |",
+      "| NDIS number | Not recorded |",
+      "| Date of birth | Not recorded |",
+      "| Plan date | 10 November 2026 |",
+      "| Date for review | 10 November 2027 |",
+      "",
+      "## Document Control",
+      "",
+      "Document Control metadata sentence for internal tracking.",
+    ].join("\n");
+
+    setupDbWithCarePlanWork(carePlanMarkdown);
+    const svc = new CompletedWorkExportService();
+    const docx = await svc.export({
+      workId: "work-1", organisationId: "org-1",
+      organisationName: "MH&R Holdings Pty Ltd", format: "docx", actorUserId: "user-1",
+    });
+    const docxXml = readDocxXml(docx.buffer);
+
+    setupDbWithCarePlanWork(carePlanMarkdown);
+    const pdf = await svc.export({
+      workId: "work-1", organisationId: "org-1",
+      organisationName: "MH&R Holdings Pty Ltd", format: "pdf", actorUserId: "user-1",
+    });
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(pdf.buffer) });
+    const pdfText = (await parser.getText()).text;
+    await parser.destroy();
+
+    for (const output of [docxXml, pdfText]) {
+      expect(output).toContain("Michael Rocca");
+      expect(output).toContain("430000000");
+      expect(output).toContain("1 January 1980");
+      expect(output).toContain("10 November 2026");
+      expect(output).toContain("10 November 2027");
+      expect(output).not.toContain("Right-click and update field");
+      expect(output).not.toContain("Table of Contents");
+    }
   });
 
   it("throws 404 when completed work is not found", async () => {
