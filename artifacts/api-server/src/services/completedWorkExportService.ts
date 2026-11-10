@@ -24,6 +24,7 @@ import PDFDocument      from "pdfkit";
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow,
   TableCell, WidthType, BorderStyle, AlignmentType, UnderlineType,
+  Footer, PageBreak, PageNumber, SimpleField,
 } from "docx";
 import { getCompletedWork, getVersions, resolveApprovedVersion } from "./completedWorkService.js";
 import { logOrgEvent }                   from "./auditService.js";
@@ -60,44 +61,29 @@ export interface IntermediateDocument {
   approvalStatus: string;
   version:        number;
   nodes:          DocumentNode[];
+  carePlanMetadata?: CarePlanDocumentMetadata;
+  draftNotice?: DraftNoticeMetadata | null;
 }
 
-function exportDraftNoticeMarkdown(work: Awaited<ReturnType<typeof getCompletedWork>>): string | null {
+export interface CarePlanDocumentMetadata {
+  participantName: string;
+  ndisNumber: string;
+  dateOfBirth: string;
+  planDate: string;
+  reviewDate: string;
+}
+
+export interface DraftNoticeMetadata {
+  blocked: boolean;
+  message: string;
+}
+
+function exportDraftNoticeMetadata(work: Awaited<ReturnType<typeof getCompletedWork>>): DraftNoticeMetadata | null {
   if (!work?.approvalWorkflow || work.approvalWorkflow.approvalBlocked !== true) return null;
-  const failures = Array.isArray(work.approvalWorkflow.completionGateFailures)
-    ? work.approvalWorkflow.completionGateFailures
-    : [];
-  const lines = [
-    "# Unapproved Draft Notice",
-    "",
-    "This document is an unapproved draft. Completion checks did not pass, so it must not be actioned as a final care plan or given to workers as a current support document.",
-    "",
-    "## Unsatisfied Requirements",
-    "",
-  ];
-  if (failures.length === 0) {
-    lines.push("- Completion checks did not pass; no detailed requirement list was recorded.");
-  } else {
-    for (const failure of failures) {
-      if (typeof failure === "string") {
-        lines.push(`- ${failure}`);
-        continue;
-      }
-      if (!failure || typeof failure !== "object") continue;
-      const record = failure as { gate?: unknown; message?: unknown; details?: unknown };
-      const gate = typeof record.gate === "string" ? record.gate.replace(/_/g, " ") : null;
-      const message = typeof record.message === "string" ? record.message : null;
-      const heading = [gate, message].filter(Boolean).join(": ");
-      lines.push(`- ${heading || "Completion check did not pass."}`);
-      if (Array.isArray(record.details)) {
-        for (const detail of record.details.filter((item): item is string => typeof item === "string").slice(0, 12)) {
-          lines.push(`  - ${detail}`);
-        }
-      }
-    }
-  }
-  lines.push("", "---", "");
-  return lines.join("\n");
+  return {
+    blocked: true,
+    message: "This document is an unapproved draft. Completion checks did not pass, so it must not be actioned as a final care plan or given to workers as a current support document.",
+  };
 }
 
 // ─── Markdown parser ──────────────────────────────────────────────────────────
@@ -240,6 +226,144 @@ function stripInlineMarkup(text: string): string {
     );
 }
 
+export function prepareClientArtifactMarkdown(markdown: string): string {
+  const withoutDraftShell = markdown
+    .replace(/^#\s+Unapproved Incomplete Draft[\s\S]*?\n##\s+Draft Content\s*\n?/i, "")
+    .replace(/^#\s+Unapproved Draft Notice[\s\S]*?(?:\n---\s*\n|$)/i, "");
+
+  const lines = withoutDraftShell.split("\n");
+  const cleaned: string[] = [];
+  let skipSectionLevel: number | null = null;
+  const apparatusHeadings = new Set([
+    "completion checks",
+    "completion checks not passed",
+    "generation truncated",
+    "unsatisfied requirements",
+    "suppressed claims",
+    "suppressed unsupported claims",
+    "generation truncation",
+    "truncation notices",
+    "truncation notice",
+  ]);
+
+  for (const line of lines) {
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (heading) {
+      const level = heading[1]!.length;
+      const normalised = stripInlineMarkup(heading[2]!)
+        .replace(/[:.]+$/g, "")
+        .trim()
+        .toLowerCase();
+      if (skipSectionLevel !== null && level <= skipSectionLevel) skipSectionLevel = null;
+      if (apparatusHeadings.has(normalised)) {
+        skipSectionLevel = level;
+        continue;
+      }
+    }
+    if (skipSectionLevel !== null) continue;
+    if (isGenerationNarrationLine(line)) continue;
+    cleaned.push(line);
+  }
+
+  return cleaned.join("\n").replace(/\n{4,}/g, "\n\n\n").trim();
+}
+
+function isGenerationNarrationLine(line: string): boolean {
+  const text = stripInlineMarkup(line).trim();
+  if (!text) return false;
+  return (
+    /\bgeneration_truncated\b/i.test(text) ||
+    /\bgeneration_failed\b/i.test(text) ||
+    /^Batch .+ generation_(?:truncated|failed)\b/i.test(text) ||
+    /^This is an unapproved draft\./i.test(text) ||
+    /^Completion checks did not pass\b/i.test(text)
+  );
+}
+
+function buildCarePlanMetadata(doc: {
+  title: string;
+  generatedDate: string;
+  nodes: DocumentNode[];
+}): CarePlanDocumentMetadata {
+  const valueByKey = new Map<string, string>();
+  for (const node of doc.nodes) collectMetadataValues(node, valueByKey);
+
+  return {
+    participantName: firstMetadataValue(valueByKey, [
+      "participant name",
+      "name",
+      "client name",
+    ]) || participantNameFromTitle(doc.title) || "Participant not recorded",
+    ndisNumber: firstMetadataValue(valueByKey, [
+      "ndis number",
+      "ndis no",
+      "ndis participant number",
+    ]) || "Not recorded",
+    dateOfBirth: firstMetadataValue(valueByKey, [
+      "date of birth",
+      "dob",
+      "birth date",
+    ]) || "Not recorded",
+    planDate: firstMetadataValue(valueByKey, [
+      "plan date",
+      "care plan date",
+      "date prepared",
+      "created date",
+    ]) || doc.generatedDate,
+    reviewDate: firstMetadataValue(valueByKey, [
+      "next review date",
+      "review date",
+      "scheduled review date",
+    ]) || "Not recorded",
+  };
+}
+
+function collectMetadataValues(node: DocumentNode, values: Map<string, string>): void {
+  if (node.type === "table") {
+    for (const row of node.children ?? []) {
+      const cells = (row.children ?? []).map(cell => (cell.content ?? "").trim()).filter(Boolean);
+      if (cells.length >= 2) {
+        addMetadataValue(values, cells[0]!, cells.slice(1).join(" "));
+      }
+    }
+  }
+  if (node.type === "paragraph" || node.type === "list_item") {
+    const match = (node.content ?? "").match(/^([^:|]{2,80})[:|]\s*(.+)$/);
+    if (match) addMetadataValue(values, match[1]!, match[2]!);
+  }
+  for (const child of node.children ?? []) collectMetadataValues(child, values);
+}
+
+function addMetadataValue(values: Map<string, string>, key: string, value: string): void {
+  const normalisedKey = normaliseMetadataKey(key);
+  const cleanValue = value.trim();
+  if (!normalisedKey || !cleanValue || /^[-–—]+$/.test(cleanValue)) return;
+  if (!values.has(normalisedKey)) values.set(normalisedKey, cleanValue);
+}
+
+function firstMetadataValue(values: Map<string, string>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = values.get(normaliseMetadataKey(key));
+    if (value) return value;
+  }
+  return null;
+}
+
+function normaliseMetadataKey(key: string): string {
+  return stripInlineMarkup(key)
+    .replace(/\s+/g, " ")
+    .replace(/[:|]+$/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function participantNameFromTitle(title: string): string | null {
+  const clean = title.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const match = clean.match(/\b(?:care plan|support plan)\s+(?:for\s+)?([A-Z][A-Za-z' -]{2,80})/i)
+    ?? clean.match(/\b([A-Z][A-Za-z' -]{2,80})\s+(?:care plan|support plan)\b/i);
+  return match?.[1]?.trim() ?? null;
+}
+
 // ─── Exporter interface ───────────────────────────────────────────────────────
 
 export interface ExportResult {
@@ -280,6 +404,7 @@ export class PdfExporter {
     return new Promise<ExportResult>((resolve, reject) => {
       const pdf = new PDFDocument({
         size: "A4",
+        bufferPages: true,
         margins: { top: 72, bottom: 72, left: 72, right: 72 },
         info: {
           Title:    doc.title,
@@ -298,35 +423,38 @@ export class PdfExporter {
         filename: sanitiseFilename(doc.title) + `-v${doc.version}.pdf`,
       }));
 
-      // ── Cover metadata ──────────────────────────────────────────────────────
-      pdf.fontSize(20).font("Helvetica-Bold").text(doc.title, { align: "left" });
-      pdf.moveDown(0.4);
-      pdf.fontSize(10).font("Helvetica").fillColor("#555555");
-      pdf.text(`Organisation: ${doc.organisation}`);
-      pdf.text(`Generated: ${doc.generatedDate}`);
-      pdf.text(`Specialist: ${doc.specialist}`);
-      pdf.text(`Approval status: ${doc.approvalStatus}`);
-      pdf.text(`Version: ${doc.version}`);
-      pdf.fillColor("#000000");
-      pdf.moveDown(0.8);
-      pdf.moveTo(72, pdf.y).lineTo(pdf.page.width - 72, pdf.y).stroke();
-      pdf.moveDown(0.8);
+      renderPdfCover(pdf, doc);
+      pdf.addPage();
+      const tocPageIndex = (pdf as any)._pageBuffer?.length ? ((pdf as any)._pageBuffer.length - 1) : 1;
+      renderPdfTocPlaceholder(pdf);
+      pdf.addPage();
 
       // ── Document nodes ──────────────────────────────────────────────────────
-      const HEADING_SIZES: Record<number, number> = { 1: 18, 2: 15, 3: 13, 4: 11 };
+      const HEADING_SIZES: Record<number, number> = { 1: 16, 2: 13, 3: 11, 4: 10 };
+      const headingEntries: Array<{ title: string; page: number; level: number }> = [];
+      let sectionNumber = 0;
 
       for (const node of doc.nodes) {
         switch (node.type) {
           case "heading": {
             const sz = HEADING_SIZES[node.level ?? 1] ?? 12;
-            pdf.font("Helvetica-Bold").fontSize(sz).text(node.content ?? "", {
+            const level = node.level ?? 1;
+            if (level <= 2 && pdf.y > pdf.page.height - 170) pdf.addPage();
+            const display = level === 1
+              ? `${++sectionNumber}. ${node.content ?? ""}`
+              : node.content ?? "";
+            const range = pdf.bufferedPageRange?.() ?? { start: 0, count: 1 };
+            headingEntries.push({ title: display, page: range.count, level });
+            pdf.fillColor("#17324D").font("Helvetica-Bold").fontSize(sz).text(display, {
               continued: false,
             });
+            pdf.moveTo(72, pdf.y + 2).lineTo(pdf.page.width - 72, pdf.y + 2).strokeColor("#9DB5C8").lineWidth(0.6).stroke();
+            pdf.strokeColor("#000000").lineWidth(1);
             pdf.moveDown(0.4);
             break;
           }
           case "paragraph": {
-            pdf.font("Helvetica").fontSize(10).text(node.content ?? "", {
+            pdf.fillColor("#111827").font("Helvetica").fontSize(10).text(node.content ?? "", {
               align: "justify",
               lineGap: 2,
             });
@@ -378,7 +506,7 @@ export class PdfExporter {
                 tableY = 72;
               }
               if (isHeader) {
-                pdf.rect(tableX, tableY, tableWidth, rowHeight).fill("#eeeeee");
+                pdf.rect(tableX, tableY, tableWidth, rowHeight).fill("#D9E6EF");
               }
               let cellX = tableX;
               for (let ci = 0; ci < colCount; ci++) {
@@ -391,7 +519,7 @@ export class PdfExporter {
                      width: colWidth - 8,
                      lineGap: 1,
                    });
-                pdf.rect(cellX, tableY, colWidth, rowHeight).stroke("#cccccc");
+                pdf.rect(cellX, tableY, colWidth, rowHeight).stroke("#7F97AA");
                 cellX += colWidth;
               }
               tableY += rowHeight;
@@ -408,24 +536,113 @@ export class PdfExporter {
         }
       }
 
+      renderPdfTableOfContents(pdf, tocPageIndex, headingEntries);
+
       // ── Footer on each page ─────────────────────────────────────────────────
       const pageCount = (pdf as any)._pageBuffer?.length ?? 1;
       const range = pdf.bufferedPageRange?.() ?? { start: 0, count: pageCount };
       for (let pi = range.start; pi < range.start + range.count; pi++) {
         pdf.switchToPage(pi);
         const pageNum = pi - range.start + 1;
-        pdf.fontSize(8).fillColor("#888888")
-           .text(
-             `${doc.title} · NeedsOps AI+ · ${doc.generatedDate} · Page ${pageNum}`,
-             72,
-             pdf.page.height - 40,
-             { align: "center", width: pdf.page.width - 144 },
-           );
+        renderPdfFooter(pdf, doc, pageNum, range.count);
       }
 
       pdf.end();
     });
   }
+}
+
+function renderPdfCover(pdf: PDFKit.PDFDocument, doc: IntermediateDocument): void {
+  const meta = doc.carePlanMetadata ?? buildCarePlanMetadata(doc);
+  const tableX = 72;
+  const tableWidth = pdf.page.width - 144;
+  pdf.fillColor("#17324D").font("Helvetica-Bold").fontSize(26).text("Care Plan", tableX, 118, {
+    width: tableWidth,
+    align: "center",
+  });
+  pdf.moveDown(0.5);
+  pdf.font("Helvetica").fontSize(12).fillColor("#4B5563").text(doc.organisation, { align: "center" });
+  if (doc.draftNotice?.blocked) {
+    pdf.moveDown(1.4);
+    pdf.rect(tableX, pdf.y, tableWidth, 58).fill("#FDECEC").stroke("#B91C1C");
+    pdf.fillColor("#7F1D1D").font("Helvetica-Bold").fontSize(11).text("UNAPPROVED DRAFT", tableX + 12, pdf.y + 12, {
+      width: tableWidth - 24,
+    });
+    pdf.font("Helvetica").fontSize(9).text(doc.draftNotice.message, tableX + 12, pdf.y + 4, {
+      width: tableWidth - 24,
+      lineGap: 1,
+    });
+  }
+  pdf.y = Math.max(pdf.y + 36, 300);
+  const rows: Array<[string, string]> = [
+    ["Participant name", meta.participantName],
+    ["NDIS number", meta.ndisNumber],
+    ["Date of birth", meta.dateOfBirth],
+    ["Plan date", meta.planDate],
+    ["Review date", meta.reviewDate],
+  ];
+  const labelWidth = 150;
+  const rowHeight = 34;
+  pdf.fontSize(10);
+  for (const [label, value] of rows) {
+    const y = pdf.y;
+    pdf.rect(tableX, y, tableWidth, rowHeight).stroke("#7F97AA");
+    pdf.rect(tableX, y, labelWidth, rowHeight).fill("#D9E6EF").stroke("#7F97AA");
+    pdf.fillColor("#17324D").font("Helvetica-Bold").text(label, tableX + 10, y + 11, { width: labelWidth - 20 });
+    pdf.fillColor("#111827").font("Helvetica").text(value, tableX + labelWidth + 10, y + 11, {
+      width: tableWidth - labelWidth - 20,
+    });
+    pdf.y = y + rowHeight;
+  }
+  pdf.y = pdf.page.height - 150;
+  pdf.fillColor("#6B7280").font("Helvetica").fontSize(9).text(
+    "Confidential participant care document. For authorised MH&R use only.",
+    tableX,
+    pdf.y,
+    { width: tableWidth, align: "center" },
+  );
+}
+
+function renderPdfTocPlaceholder(pdf: PDFKit.PDFDocument): void {
+  pdf.fillColor("#17324D").font("Helvetica-Bold").fontSize(18).text("Table of Contents");
+  pdf.moveDown(0.6);
+  pdf.fillColor("#6B7280").font("Helvetica").fontSize(10).text("The contents below are generated from the numbered care-plan sections.");
+}
+
+function renderPdfTableOfContents(
+  pdf: PDFKit.PDFDocument,
+  pageIndex: number,
+  headings: Array<{ title: string; page: number; level: number }>,
+): void {
+  pdf.switchToPage(pageIndex);
+  pdf.y = 144;
+  for (const entry of headings.filter(item => item.level <= 2).slice(0, 40)) {
+    const indent = entry.level === 1 ? 0 : 18;
+    const titleWidth = pdf.page.width - 144 - indent - 50;
+    pdf.fillColor("#111827")
+      .font(entry.level === 1 ? "Helvetica-Bold" : "Helvetica")
+      .fontSize(entry.level === 1 ? 10 : 9)
+      .text(entry.title, 72 + indent, pdf.y, { width: titleWidth, continued: false });
+    pdf.text(String(entry.page), pdf.page.width - 112, pdf.y - 12, { width: 40, align: "right" });
+    pdf.moveDown(0.35);
+  }
+}
+
+function renderPdfFooter(
+  pdf: PDFKit.PDFDocument,
+  doc: IntermediateDocument,
+  pageNumber: number,
+  pageCount: number,
+): void {
+  const participant = doc.carePlanMetadata?.participantName ?? buildCarePlanMetadata(doc).participantName;
+  const footer = `${participant} · Page ${pageNumber} of ${pageCount} · Confidential — MH&R Holdings Pty Ltd`;
+  pdf.fontSize(8).fillColor("#6B7280")
+    .text(
+      footer,
+      72,
+      pdf.page.height - 40,
+      { align: "center", width: pdf.page.width - 144 },
+    );
 }
 
 function calculatePdfTableColumnWidths(
@@ -477,60 +694,77 @@ export class DocxExporter {
     };
 
     const paragraphs: (Paragraph | Table)[] = [];
+    const metadata = doc.carePlanMetadata ?? buildCarePlanMetadata(doc);
 
-    // ── Metadata block ──────────────────────────────────────────────────────
+    // ── Cover page ──────────────────────────────────────────────────────────
     paragraphs.push(
       new Paragraph({
-        text: doc.title,
+        text: "Care Plan",
         heading: HeadingLevel.TITLE,
+        alignment: AlignmentType.CENTER,
       }),
       new Paragraph({
-        children: [
-          new TextRun({ text: "Organisation: ", bold: true }),
-          new TextRun({ text: doc.organisation }),
-        ],
+        text: doc.organisation,
+        alignment: AlignmentType.CENTER,
       }),
-      new Paragraph({
-        children: [
-          new TextRun({ text: "Generated: ", bold: true }),
-          new TextRun({ text: doc.generatedDate }),
-        ],
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({ text: "Specialist: ", bold: true }),
-          new TextRun({ text: doc.specialist }),
-        ],
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({ text: "Approval status: ", bold: true }),
-          new TextRun({ text: doc.approvalStatus }),
-        ],
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({ text: "Version: ", bold: true }),
-          new TextRun({ text: String(doc.version) }),
-        ],
-      }),
+      ...(doc.draftNotice?.blocked ? [
+        new Paragraph({ text: "" }),
+        new Paragraph({
+          children: [new TextRun({ text: "UNAPPROVED DRAFT", bold: true, color: "7F1D1D" })],
+          border: {
+            top: { style: BorderStyle.SINGLE, size: 8, color: "B91C1C" },
+            bottom: { style: BorderStyle.SINGLE, size: 8, color: "B91C1C" },
+            left: { style: BorderStyle.SINGLE, size: 8, color: "B91C1C" },
+            right: { style: BorderStyle.SINGLE, size: 8, color: "B91C1C" },
+          },
+          shading: { fill: "FDECEC" } as any,
+        }),
+        new Paragraph({
+          text: doc.draftNotice.message,
+          shading: { fill: "FDECEC" } as any,
+        }),
+      ] : []),
       new Paragraph({ text: "" }),
+      buildDocxMetadataTable(metadata),
+      new Paragraph({
+        children: [new TextRun({ text: "Confidential participant care document. For authorised MH&R use only.", italics: true })],
+        alignment: AlignmentType.CENTER,
+      }),
+      new Paragraph({ children: [new PageBreak()] }),
+      new Paragraph({
+        text: "Table of Contents",
+        heading: HeadingLevel.HEADING_1,
+      }),
+      new Paragraph({
+        children: [new SimpleField('TOC \\o "1-3" \\h \\z \\u', "Right-click and update field to refresh page numbers.")],
+      }),
+      new Paragraph({ children: [new PageBreak()] }),
     );
+
+    let sectionNumber = 0;
 
     // ── Document nodes ──────────────────────────────────────────────────────
     for (const node of doc.nodes) {
       switch (node.type) {
-        case "heading":
+        case "heading": {
+          const level = node.level ?? 1;
+          const text = level === 1 ? `${++sectionNumber}. ${node.content ?? ""}` : node.content ?? "";
           paragraphs.push(
             new Paragraph({
-              text: node.content ?? "",
-              heading: DOCX_HEADING[node.level ?? 1] ?? HeadingLevel.HEADING_1,
+              text,
+              heading: DOCX_HEADING[level] ?? HeadingLevel.HEADING_1,
+              spacing: { before: level === 1 ? 260 : 160, after: 120 },
+              border: level <= 2 ? { bottom: { style: BorderStyle.SINGLE, size: 4, color: "9DB5C8" } } : undefined,
             }),
           );
           break;
+        }
 
         case "paragraph":
-          paragraphs.push(new Paragraph({ text: node.content ?? "" }));
+          paragraphs.push(new Paragraph({
+            text: node.content ?? "",
+            spacing: { after: 120 },
+          }));
           break;
 
         case "code":
@@ -596,6 +830,8 @@ export class DocxExporter {
                     ],
                   }),
                 ],
+                shading: ri === 0 ? { fill: "D9E6EF" } as any : undefined,
+                borders: docxTableCellBorders("7F97AA"),
               }),
             );
             return new TableRow({ children: cells });
@@ -615,7 +851,30 @@ export class DocxExporter {
     const docxDocument = new Document({
       title: doc.title,
       description: `Generated by NeedsOps AI+ — ${doc.specialist}`,
-      sections: [{ children: paragraphs }],
+      sections: [{
+        properties: {
+          page: {
+            margin: { top: 1008, bottom: 1008, left: 1008, right: 1008, footer: 480 },
+          },
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({ text: `${metadata.participantName} · Page `, size: 16, color: "6B7280" }),
+                  new TextRun({ children: [PageNumber.CURRENT], size: 16, color: "6B7280" }),
+                  new TextRun({ text: " of ", size: 16, color: "6B7280" }),
+                  new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: "6B7280" }),
+                  new TextRun({ text: " · Confidential — MH&R Holdings Pty Ltd", size: 16, color: "6B7280" }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children: paragraphs,
+      }],
       numbering: {
         config: [
           {
@@ -633,6 +892,41 @@ export class DocxExporter {
       filename: sanitiseFilename(doc.title) + `-v${doc.version}.docx`,
     };
   }
+}
+
+function buildDocxMetadataTable(metadata: CarePlanDocumentMetadata): Table {
+  const rows: Array<[string, string]> = [
+    ["Participant name", metadata.participantName],
+    ["NDIS number", metadata.ndisNumber],
+    ["Date of birth", metadata.dateOfBirth],
+    ["Plan date", metadata.planDate],
+    ["Review date", metadata.reviewDate],
+  ];
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: rows.map(([label, value]) => new TableRow({
+      children: [
+        new TableCell({
+          shading: { fill: "D9E6EF" } as any,
+          borders: docxTableCellBorders("7F97AA"),
+          children: [new Paragraph({ children: [new TextRun({ text: label, bold: true })] })],
+        }),
+        new TableCell({
+          borders: docxTableCellBorders("7F97AA"),
+          children: [new Paragraph({ text: value })],
+        }),
+      ],
+    })),
+  });
+}
+
+function docxTableCellBorders(color: string) {
+  return {
+    top: { style: BorderStyle.SINGLE, size: 4, color },
+    bottom: { style: BorderStyle.SINGLE, size: 4, color },
+    left: { style: BorderStyle.SINGLE, size: 4, color },
+    right: { style: BorderStyle.SINGLE, size: 4, color },
+  };
 }
 
 // ─── XLSX Exporter ────────────────────────────────────────────────────────────
@@ -961,31 +1255,34 @@ export class CompletedWorkExportService {
       throw Object.assign(new Error("No content available for export"), { statusCode: 400 });
     }
 
-    const draftNotice = exportDraftNoticeMarkdown(work);
-    const markdown   = draftNotice
-      ? `${draftNotice}${resolvedVersion.contentMarkdown}`
-      : resolvedVersion.contentMarkdown;
+    const generatedDate = new Date().toLocaleDateString("en-AU", {
+      day: "numeric", month: "long", year: "numeric",
+    });
+    const sourceMarkdown = resolvedVersion.contentMarkdown;
+    const clientArtifactMarkdown = ["pdf", "docx"].includes(format)
+      ? prepareClientArtifactMarkdown(sourceMarkdown)
+      : sourceMarkdown;
     // Normalise content format before parsing — converts JSON/fenced-JSON to
     // human-readable markdown so exporters never see raw braces or property names.
-    const normalised = normaliseCompletedWorkContent(markdown);
+    const normalised = normaliseCompletedWorkContent(clientArtifactMarkdown);
     const nodes      = parseMarkdown(normalised);
 
     const intermediateDoc: IntermediateDocument = {
       title:          work.title,
       organisation:   organisationName,
-      generatedDate:  new Date().toLocaleDateString("en-AU", {
-        day: "numeric", month: "long", year: "numeric",
-      }),
+      generatedDate,
       specialist:     formatSpecialist(work.primarySpecialist),
       approvalStatus: formatApprovalStatus(work.status),
       version:        resolvedVersion.versionNumber,
       nodes,
+      carePlanMetadata: buildCarePlanMetadata({ title: work.title, generatedDate, nodes }),
+      draftNotice: exportDraftNoticeMetadata(work),
     };
 
     let result: ExportResult;
     switch (format) {
       case "md":
-        result = this.mdExporter.export(intermediateDoc, markdown);
+        result = this.mdExporter.export(intermediateDoc, sourceMarkdown);
         break;
       case "pdf":
         result = await this.pdfExporter.export(intermediateDoc);

@@ -74,6 +74,7 @@ import {
   PdfExporter,
   DocxExporter,
   CompletedWorkExportService,
+  prepareClientArtifactMarkdown,
   type IntermediateDocument,
 } from "../services/completedWorkExportService.js";
 import { logOrgEvent } from "../services/auditService.js";
@@ -489,6 +490,108 @@ describe("DocxExporter", () => {
     const doc = makeDoc({ nodes: [{ type: "blockquote", content: "Important note" }] });
     const result = await exporter.export(doc);
     expect(result.buffer.length).toBeGreaterThan(0);
+  });
+});
+
+describe("client-facing care-plan artifacts", () => {
+  const apparatusMarkdown = [
+    "# Unapproved Incomplete Draft",
+    "",
+    "This is an unapproved draft.",
+    "",
+    "## Draft Content",
+    "",
+    "# Michael Rocca Care Plan",
+    "",
+    "| Participant name | Michael Rocca |",
+    "| --- | --- |",
+    "| NDIS number | 430000000 |",
+    "| Date of birth | 1 January 1980 |",
+    "| Review date | 1 January 2027 |",
+    "",
+    "## Goals",
+    "",
+    "| Goal | Actions | Person responsible |",
+    "| --- | --- | --- |",
+    "| Build independence | No goal evidence on file for Actions. | No goal evidence on file for Person responsible. |",
+    "",
+    "## Completion Checks Not Passed",
+    "",
+    "- generation_truncated: Mobility output was truncated.",
+    "",
+    "## Unsatisfied Requirements",
+    "",
+    "- care-plan-mobility-strategy",
+    "",
+    "## Suppressed Unsupported Claims",
+    "",
+    "- Unsupported claim.",
+    "",
+    "## Truncation Notices",
+    "",
+    "Batch mobility generation_truncated before completion.",
+  ].join("\n");
+
+  it("removes generation apparatus while preserving inline absence statements", () => {
+    const cleaned = prepareClientArtifactMarkdown(apparatusMarkdown);
+    expect(cleaned).toContain("# Michael Rocca Care Plan");
+    expect(cleaned).toContain("No goal evidence on file for Actions.");
+    expect(cleaned).not.toContain("Unapproved Incomplete Draft");
+    expect(cleaned).not.toContain("Completion Checks Not Passed");
+    expect(cleaned).not.toContain("Unsatisfied Requirements");
+    expect(cleaned).not.toContain("Suppressed Unsupported Claims");
+    expect(cleaned).not.toContain("generation_truncated");
+  });
+
+  it("renders one DOCX draft notice and keeps apparatus out of document XML", async () => {
+    const exporter = new DocxExporter();
+    const doc = makeDoc({
+      title: "Care Plan for Michael Rocca",
+      organisation: "MH&R Holdings Pty Ltd",
+      nodes: parseMarkdown(prepareClientArtifactMarkdown(apparatusMarkdown)),
+      draftNotice: {
+        blocked: true,
+        message: "This document is an unapproved draft.",
+      },
+    });
+    const result = await exporter.export(doc);
+    const xml = readDocxXml(result.buffer);
+    expect((xml.match(/UNAPPROVED DRAFT/g) ?? [])).toHaveLength(1);
+    expect(xml).toContain("Michael Rocca");
+    expect(xml).toContain("430000000");
+    expect(xml).toContain("Table of Contents");
+    expect(xml).toContain("No goal evidence on file for Actions.");
+    expect(xml).not.toContain("Completion Checks Not Passed");
+    expect(xml).not.toContain("Unsatisfied Requirements");
+    expect(xml).not.toContain("Suppressed Unsupported Claims");
+    expect(xml).not.toContain("generation_truncated");
+  });
+
+  it("renders one PDF draft notice and keeps apparatus out of visible text", async () => {
+    const { PDFParse } = await import("pdf-parse");
+    const exporter = new PdfExporter();
+    const doc = makeDoc({
+      title: "Care Plan for Michael Rocca",
+      organisation: "MH&R Holdings Pty Ltd",
+      nodes: parseMarkdown(prepareClientArtifactMarkdown(apparatusMarkdown)),
+      draftNotice: {
+        blocked: true,
+        message: "This document is an unapproved draft.",
+      },
+    });
+    const result = await exporter.export(doc);
+    const parser = new PDFParse({ data: new Uint8Array(result.buffer) });
+    const parsed = await parser.getText();
+    await parser.destroy();
+    expect((parsed.text.match(/UNAPPROVED DRAFT/g) ?? [])).toHaveLength(1);
+    expect(parsed.text).toContain("Michael Rocca");
+    expect(parsed.text).toContain("430000000");
+    expect(parsed.text).toContain("Table of Contents");
+    expect(parsed.text).toContain("No goal evidence on file for Actions.");
+    expect(parsed.text).not.toContain("Completion Checks Not Passed");
+    expect(parsed.text).not.toContain("Unsatisfied Requirements");
+    expect(parsed.text).not.toContain("Suppressed Unsupported Claims");
+    expect(parsed.text).not.toContain("generation_truncated");
   });
 });
 

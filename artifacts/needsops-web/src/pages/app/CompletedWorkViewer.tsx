@@ -139,20 +139,52 @@ function completionGateFailureMessages(work: CompletedWorkItem | null | undefine
     .filter((message): message is string => Boolean(message && message.trim()));
 }
 
+function workflowRecordMessages(work: CompletedWorkItem | null | undefined, key: string): string[] {
+  const workflow = work?.approvalWorkflow;
+  if (!workflow || typeof workflow !== "object") return [];
+  const records = (workflow as Record<string, unknown>)[key];
+  if (!Array.isArray(records)) return [];
+  return records
+    .map((record) => {
+      if (typeof record === "string") return record;
+      if (!record || typeof record !== "object") return null;
+      const value = record as Record<string, unknown>;
+      const gate = typeof value.gate === "string" ? value.gate.replace(/_/g, " ") : null;
+      const section = typeof value.section === "string" ? value.section : null;
+      const message = typeof value.message === "string" ? value.message : null;
+      const claim = typeof value.claim === "string" ? value.claim : null;
+      const reason = typeof value.reason === "string" ? value.reason : null;
+      return [gate ?? section, message ?? claim, reason].filter(Boolean).join(": ");
+    })
+    .filter((message): message is string => Boolean(message && message.trim()));
+}
+
+function DraftWorkflowList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <p className="font-medium text-red-100">{title}</p>
+      <ul className="mt-1 list-disc space-y-1 pl-5 text-red-100/80">
+        {items.map((item, index) => <li key={`${title}-${index}-${item}`}>{item}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 function DraftAvailabilityBanner({ work }: { work: CompletedWorkItem }) {
   if (!isApprovalBlocked(work)) return null;
   const failures = completionGateFailureMessages(work);
+  const metadataFindings = workflowRecordMessages(work, "metadataOnlyCompletionFindings");
+  const suppressedClaims = workflowRecordMessages(work, "suppressedClaims");
   return (
     <div className="mb-4 rounded-xl border border-red-500/40 bg-red-950/25 p-4 text-sm text-red-100">
       <p className="font-semibold text-red-200">Unapproved draft — do not action as a final plan</p>
       <p className="mt-1 text-red-100/80">
         This document was produced, but completion checks did not pass. It is available for review only, is not approved, and must not be given to workers as a current support plan.
       </p>
-      {failures.length > 0 && (
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-red-100/80">
-          {failures.map((failure, index) => <li key={`${index}-${failure}`}>{failure}</li>)}
-        </ul>
-      )}
+      <DraftWorkflowList title="Completion checks" items={failures} />
+      <DraftWorkflowList title="Metadata findings" items={metadataFindings} />
+      <DraftWorkflowList title="Suppressed unsupported claims" items={suppressedClaims} />
     </div>
   );
 }

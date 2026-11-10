@@ -130,7 +130,12 @@ describe("care-plan UI end to end affordances", () => {
           outputType: "plan",
           primarySpecialist: "chief_of_staff",
           status: "evidence_required",
-          approvalWorkflow: { approvalBlocked: true },
+          approvalWorkflow: {
+            approvalBlocked: true,
+            completionGateFailures: [{ gate: "generation_truncation", message: "Mobility output was truncated." }],
+            metadataOnlyCompletionFindings: [{ gate: "document_metadata", message: "Review date was inferred." }],
+            suppressedClaims: [{ section: "Mobility", claim: "Independent transfers", reason: "No cited evidence." }],
+          },
           createdAt: "2026-11-01T00:00:00.000Z",
           updatedAt: "2026-11-01T00:00:00.000Z",
         },
@@ -145,6 +150,12 @@ describe("care-plan UI end to end affordances", () => {
     renderWithClient(<CompletedWorkViewer />);
 
     expect(await screen.findByRole("button", { name: "Download DOCX artifact" })).toBeInTheDocument();
+    expect(screen.getByText("Completion checks")).toBeInTheDocument();
+    expect(screen.getByText(/Mobility output was truncated/)).toBeInTheDocument();
+    expect(screen.getByText("Metadata findings")).toBeInTheDocument();
+    expect(screen.getByText(/Review date was inferred/)).toBeInTheDocument();
+    expect(screen.getByText("Suppressed unsupported claims")).toBeInTheDocument();
+    expect(screen.getByText(/Independent transfers/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Download PDF artifact" }));
     await waitFor(() => expect(artifactDownloadCalls).toEqual([
       "/v1/organisations/mhr-holdings-pty-ltd/completed-work/work-1/artifacts/artifact-pdf/download",

@@ -242,6 +242,7 @@ export async function blockCompletedWorkApproval(input: {
   organizationId: string;
   completionGateFailures: unknown[];
   metadataOnlyCompletionFindings?: unknown[];
+  suppressedClaims?: unknown[];
   reason?: string;
 }): Promise<CompletedWorkItem> {
   const approvalWorkflow = {
@@ -249,6 +250,7 @@ export async function blockCompletedWorkApproval(input: {
     approvalBlockedReason: input.reason ?? "This draft did not pass completion checks and cannot be submitted for approval.",
     completionGateFailures: input.completionGateFailures,
     metadataOnlyCompletionFindings: input.metadataOnlyCompletionFindings ?? [],
+    suppressedClaims: input.suppressedClaims ?? [],
   };
 
   await withCompletedWorkTenant(input.organizationId, "completed_work.block_approval", async (client) => client
@@ -278,6 +280,7 @@ function clearedApprovalWorkflow(
     approvalBlockedReason: null,
     completionGateFailures: [],
     metadataOnlyCompletionFindings: [],
+    suppressedClaims: [],
     approvalBlockClearedAt: new Date().toISOString(),
     approvalBlockClearedByUserId: actorUserId,
     approvalBlockClearReason: reason,
@@ -285,6 +288,7 @@ function clearedApprovalWorkflow(
       approvalBlockedReason: existing.approvalBlockedReason ?? null,
       completionGateFailures: existing.completionGateFailures ?? [],
       metadataOnlyCompletionFindings: existing.metadataOnlyCompletionFindings ?? [],
+      suppressedClaims: existing.suppressedClaims ?? [],
     },
   };
 }

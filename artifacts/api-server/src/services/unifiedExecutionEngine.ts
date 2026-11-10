@@ -2673,6 +2673,9 @@ export class UnifiedExecutionEngine {
       blueprintContract,
       evidencePack,
     );
+    const approvalSuppressedClaims = approvalBlockedByCompletionGates
+      ? collectParticipantCarePlanSuppressionRecords(deliverableSections)
+      : [];
     const approvalWorkflow = {
       ...(approvalBlockedByCompletionGates ? {
         approvalBlocked: true,
@@ -2685,6 +2688,11 @@ export class UnifiedExecutionEngine {
         metadataOnlyCompletionFindings: metadataOnlyCompletionFailures.map((failure) => ({
           gate: failure.gate,
           message: failure.message,
+        })),
+        suppressedClaims: approvalSuppressedClaims.map((record) => ({
+          section: record.section,
+          claim: record.claim,
+          reason: record.reason,
         })),
       } : {}),
       ...(evidenceSelectionRouting.length > 0 ? { evidenceSelectionRouting } : {}),
@@ -2799,6 +2807,11 @@ export class UnifiedExecutionEngine {
           metadataOnlyCompletionFindings: metadataOnlyCompletionFailures.map((failure) => ({
             gate: failure.gate,
             message: failure.message,
+          })),
+          suppressedClaims: collectParticipantCarePlanSuppressionRecords(deliverableSections).map((record) => ({
+            section: record.section,
+            claim: record.claim,
+            reason: record.reason,
           })),
         });
         const blockingMessage = artifactGate.failures
