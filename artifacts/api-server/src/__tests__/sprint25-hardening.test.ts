@@ -781,14 +781,14 @@ describe("CompletedWorkExportService", () => {
     const svc = new CompletedWorkExportService();
     const docx = await svc.export({
       workId: "work-1", organisationId: "org-1",
-      organisationName: "MH&R Holdings Pty Ltd", format: "docx", actorUserId: "user-1",
+      organisationName: "MH&R Holdings Pty Ltd", format: "docx", actorUserId: "user-1", taskId: "task-1",
     });
     const docxXml = readDocxXml(docx.buffer);
 
     setupDbWithCarePlanWork(carePlanMarkdown);
     const pdf = await svc.export({
       workId: "work-1", organisationId: "org-1",
-      organisationName: "MH&R Holdings Pty Ltd", format: "pdf", actorUserId: "user-1",
+      organisationName: "MH&R Holdings Pty Ltd", format: "pdf", actorUserId: "user-1", taskId: "task-1",
     });
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(pdf.buffer) });
@@ -803,6 +803,52 @@ describe("CompletedWorkExportService", () => {
       expect(output).toContain("10 November 2027");
       expect(output).not.toContain("Right-click and update field");
       expect(output).not.toContain("Table of Contents");
+    }
+  });
+
+  it("keeps care-plan export alive when participant lookup fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const carePlanMarkdown = [
+      "# Participant Ndis Care Plan",
+      "",
+      "## Support Plan Meeting",
+      "",
+      "| Field | Value |",
+      "| --- | --- |",
+      "| Client name | Body Value |",
+      "| NDIS number | 999999999 |",
+      "| Date of birth | 2 February 1982 |",
+      "| Plan date | 10 November 2026 |",
+      "| Date for review | 10 November 2027 |",
+    ].join("\n");
+
+    setupDbWithCarePlanWork(carePlanMarkdown);
+    mockDb.execute.mockRejectedValueOnce(new Error("column es.execution_id does not exist"));
+
+    try {
+      const pdf = await new CompletedWorkExportService().export({
+        workId: "work-1", organisationId: "org-1",
+        organisationName: "MH&R Holdings Pty Ltd", format: "pdf", actorUserId: "user-1", taskId: "task-1",
+      });
+      const { PDFParse } = await import("pdf-parse");
+      const parser = new PDFParse({ data: new Uint8Array(pdf.buffer) });
+      const pdfText = (await parser.getText()).text;
+      await parser.destroy();
+
+      expect(pdfText).toContain("Not recorded");
+      expect(pdfText).toContain("10 November 2026");
+      expect(pdfText).toContain("10 November 2027");
+      expect(pdfText).not.toContain("Participant name Participant Ndis");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[CompletedWorkExport] subject participant lookup failed for care plan cover",
+        expect.objectContaining({
+          completedWorkId: "work-1",
+          taskId: "task-1",
+          error: "column es.execution_id does not exist",
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
     }
   });
 

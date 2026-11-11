@@ -317,17 +317,30 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
     generatedDate: input.generatedDate,
     nodes: input.nodes,
   });
-  const participant = await resolveBoundSubjectParticipantForCompletedWork(
-    input.organisationId,
-    input.workId,
-    input.taskId,
-  );
-  if (!participant) {
+  let participant: ParticipantCoverRecord | null = null;
+  let lookupThrew = false;
+  try {
+    participant = await resolveBoundSubjectParticipantForCompletedWork(
+      input.organisationId,
+      input.taskId,
+    );
+  } catch (error) {
+    lookupThrew = true;
     console.warn("[CompletedWorkExport] subject participant lookup failed for care plan cover", {
       completedWorkId: input.workId,
       taskId: input.taskId ?? null,
       organisationId: input.organisationId,
+      error: error instanceof Error ? error.message : String(error),
     });
+  }
+  if (!participant) {
+    if (!lookupThrew) {
+      console.warn("[CompletedWorkExport] subject participant lookup failed for care plan cover", {
+        completedWorkId: input.workId,
+        taskId: input.taskId ?? null,
+        organisationId: input.organisationId,
+      });
+    }
     return {
       ...declaredFields,
       participantName: "Not recorded",
@@ -369,65 +382,26 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
 
 async function resolveBoundSubjectParticipantForCompletedWork(
   organisationId: string,
-  completedWorkId: string,
   taskId?: string | null,
 ): Promise<ParticipantCoverRecord | null> {
+  if (!taskId) return null;
   const result = await withCompletedWorkExportTenant(
     organisationId,
     "completed_work.export.subject_participant",
     async (client) => client.execute(sql`
-      WITH direct_task AS (
-        SELECT ${taskId ?? null}::text AS task_id
-        WHERE ${taskId ?? null}::text IS NOT NULL
-      ),
-      artifact_task AS (
-        SELECT wa.task_id
-        FROM work_artifacts wa
-        WHERE wa.organization_id = ${organisationId}
-          AND wa.completed_work_id = ${completedWorkId}
-          AND wa.task_id IS NOT NULL
-        ORDER BY wa.created_at DESC
-        LIMIT 1
-      ),
-      manifest_task AS (
-        SELECT es.task_id
-        FROM completed_work cw
-        INNER JOIN work_package_manifests wpm
-          ON (wpm.id = cw.manifest_id OR wpm.completed_work_id = cw.id)
-         AND wpm.organization_id = cw.organization_id
-        INNER JOIN execution_sessions es
-          ON es.execution_id = wpm.execution_id
-         AND es.organization_id = cw.organization_id
-        WHERE cw.organization_id = ${organisationId}
-          AND cw.id = ${completedWorkId}
-          AND es.task_id IS NOT NULL
-        ORDER BY es.created_at DESC
-        LIMIT 1
-      ),
-      task_source AS (
-        SELECT task_id FROM direct_task
-        UNION ALL
-        SELECT task_id FROM artifact_task
-        WHERE NOT EXISTS (SELECT 1 FROM direct_task)
-        UNION ALL
-        SELECT task_id FROM manifest_task
-        WHERE NOT EXISTS (SELECT 1 FROM direct_task)
-          AND NOT EXISTS (SELECT 1 FROM artifact_task)
-      )
       SELECT
         p.display_name AS "displayName",
         p.preferred_name AS "preferredName",
         p.external_participant_id AS "externalParticipantId",
         p.metadata AS "metadata"
-      FROM task_source ts
-      INNER JOIN task_participants tp
-        ON tp.task_id = ts.task_id
-       AND tp.organization_id = ${organisationId}
-       AND tp.role = 'subject'
+      FROM task_participants tp
       INNER JOIN participants p
         ON p.id = tp.participant_id
        AND p.organization_id = tp.organization_id
        AND p.deleted_at IS NULL
+      WHERE tp.organization_id = ${organisationId}
+        AND tp.task_id = ${taskId}
+        AND tp.role = 'subject'
       ORDER BY tp.created_at DESC
       LIMIT 1
     `),
