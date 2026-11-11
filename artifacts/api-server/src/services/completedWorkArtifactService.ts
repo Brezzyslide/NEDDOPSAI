@@ -108,6 +108,7 @@ export async function generateCompletedWorkArtifacts(
         organisationName: input.organizationName,
         format: format as ExportFormat,
         actorUserId: input.actorUserId,
+        taskId: input.taskId ?? null,
       });
       if (exportResult.buffer.length <= 0) {
         throw new Error(`Generated ${format.toUpperCase()} artifact is empty.`);

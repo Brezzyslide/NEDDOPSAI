@@ -789,6 +789,58 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(invalidMapping?.finalResult).not.toBe("SATISFIED");
   });
 
+  it("verifies Mobility structured support values from the cited source row", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Alex.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const mobilitySection = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: [
+        "| Field | Value | Worker guidance |",
+        "| --- | --- | --- |",
+        "| Transfer method | Transfers to and from bed without support. | Allow independent bed transfers and escalate any change in falls risk. |",
+      ].join("\n"),
+      evidenceSources: [],
+      structuredRows: [{
+        activity: "Transfer method",
+        supportLevel: "Transfers to and from bed without support.",
+        workerDescription: "Allow independent bed transfers and escalate any change in falls risk.",
+        sourceValue: "Transfer to/from bed: Without support",
+        chunkId: "chunk-transfer",
+        mappingMode: "VERIFIED_MAPPING" as const,
+        derivedGuidance: {
+          text: "Allow independent bed transfers and escalate any change in falls risk.",
+          provenance: "SYSTEM_DERIVED" as const,
+          basisField: "Transfer method",
+        },
+      }],
+    };
+    const report = evaluateDeliverableRequirementCoverage(assembleDeliverableMarkdownFromSections([mobilitySection]), profile, {
+      deliverableSections: [mobilitySection],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-transfer",
+        text: "Transfer to/from bed: Without support.",
+      }),
+    });
+    const mobility = report.requirementResults.find((item) => item.requirementId === "care-plan-mobility-strategy");
+
+    expect(mobility?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "VERIFIED_MAPPING",
+        passed: true,
+        citedText: "Transfer to/from bed: Without support",
+      }),
+    ]));
+    expect(mobility?.citationFindings?.some((finding) => finding.mode === "UNSUPPORTED_CITATION")).toBe(false);
+  });
+
   it("does not satisfy ADL when all canonical rows declare no assessment", () => {
     const result = adlCoverageResult(adlRowsWithSupportedActivities([]));
 

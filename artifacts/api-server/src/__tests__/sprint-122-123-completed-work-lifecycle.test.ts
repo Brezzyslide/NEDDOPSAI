@@ -641,4 +641,158 @@ describe.runIf(runDbBackedLifecycleTests)("DB-backed blocked draft reconciliatio
       await db.delete(organizationsTable).where(eq(organizationsTable.id, organizationId)).catch(() => undefined);
     }
   });
+
+  it("exports care-plan cover participant metadata from persisted task subject binding", async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const organizationId = `org-db-cover-${suffix}`;
+    const taskId = `task-db-cover-${suffix}`;
+    const participantId = `participant-db-cover-${suffix}`;
+    const completedWorkId = `cw-db-cover-${suffix}`;
+    const versionId = `cwv-db-cover-${suffix}`;
+    const userId = `user-db-cover-${suffix}`;
+
+    const [
+      {
+        db,
+        organizationsTable,
+        tasksTable,
+        participantsTable,
+        taskParticipantsTable,
+        completedWorkTable,
+        completedWorkVersionsTable,
+        withSystemTenantContext,
+      },
+      { eq, and },
+      { CompletedWorkExportService },
+      { PDFParse },
+    ] = await Promise.all([
+      import("@workspace/db"),
+      import("drizzle-orm"),
+      import("../services/completedWorkExportService.js"),
+      import("pdf-parse"),
+    ]);
+
+    await db.insert(organizationsTable).values({
+      id: organizationId,
+      name: "DB Cover Metadata Test",
+      slug: `db-cover-${suffix}`.slice(0, 63),
+      displayName: "DB Cover Metadata Test",
+      status: "active",
+      environment: "test",
+      isTestOrganisation: true,
+    });
+
+    try {
+      await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "cover_metadata.seed" },
+        async (client) => {
+          await client.insert(tasksTable).values({
+            id: taskId,
+            organizationId,
+            title: "Create participant-specific care plan",
+            originatingModule: "task_centre_direct_care_plan",
+            currentState: "evidence_required",
+            priority: "normal",
+            approvalState: "not_required",
+            metadata: {
+              taskCreation: {
+                source: "task_centre_direct_care_plan",
+                participantConfirmation: { confirmedCandidateIds: [participantId] },
+              },
+            },
+          });
+          await client.insert(participantsTable).values({
+            id: participantId,
+            organizationId,
+            displayName: "Micheal Rocca",
+            preferredName: "Michelli",
+            externalParticipantId: "430000000",
+            status: "inactive",
+            metadata: { dateOfBirth: "1 January 1980" },
+          });
+          await client.insert(taskParticipantsTable).values({
+            id: `tp-db-cover-${suffix}`,
+            organizationId,
+            taskId,
+            participantId,
+            role: "subject",
+          });
+          await client.insert(completedWorkTable).values({
+            id: completedWorkId,
+            organizationId,
+            conversationId: null,
+            blueprintId: "care_plan",
+            blueprintVersion: "1.0.0",
+            manifestId: null,
+            primarySpecialist: "service_delivery_coordinator",
+            title: "Participant Ndis Support Plan",
+            outputType: "care_plan",
+            status: "draft",
+            currentVersionId: versionId,
+            approvalWorkflow: {},
+            createdByUserId: userId,
+          });
+          await client.insert(completedWorkVersionsTable).values({
+            id: versionId,
+            completedWorkId,
+            organizationId,
+            versionNumber: 1,
+            contentMarkdown: [
+              "## Support Plan Meeting",
+              "",
+              "Participant name: Body Should Not Override Binding",
+              "NDIS number: 999999999",
+              "Date of birth: 2 February 1982",
+              "Plan date: 10 November 2026",
+              "Date for review: 10 May 2027",
+              "",
+              "## Goals",
+              "",
+              "No goal evidence on file for Actions.",
+            ].join("\n"),
+            reviewDimensions: [],
+            changeNote: "Initial draft",
+            isAutoRevision: "false",
+            createdByUserId: userId,
+          });
+        },
+      );
+
+      const result = await new CompletedWorkExportService().export({
+        workId: completedWorkId,
+        organisationId: organizationId,
+        organisationName: "MH&R Holdings Pty Ltd",
+        format: "pdf",
+        actorUserId: userId,
+        taskId,
+      });
+      const parser = new PDFParse({ data: new Uint8Array(result.buffer) });
+      const parsed = await parser.getText();
+      await parser.destroy();
+
+      expect(parsed.text).toContain("Micheal Rocca");
+      expect(parsed.text).toContain("430000000");
+      expect(parsed.text).toContain("1 January 1980");
+      expect(parsed.text).toContain("10 November 2026");
+      expect(parsed.text).toContain("10 May 2027");
+      expect(parsed.text).not.toContain("Participant Ndis");
+    } finally {
+      await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "cover_metadata.cleanup" },
+        async (client) => {
+          await client.delete(completedWorkVersionsTable)
+            .where(and(eq(completedWorkVersionsTable.completedWorkId, completedWorkId), eq(completedWorkVersionsTable.organizationId, organizationId)));
+          await client.delete(completedWorkTable)
+            .where(and(eq(completedWorkTable.id, completedWorkId), eq(completedWorkTable.organizationId, organizationId)));
+          await client.delete(taskParticipantsTable)
+            .where(and(eq(taskParticipantsTable.taskId, taskId), eq(taskParticipantsTable.organizationId, organizationId)));
+          await client.delete(participantsTable)
+            .where(and(eq(participantsTable.id, participantId), eq(participantsTable.organizationId, organizationId)));
+          await client.delete(tasksTable)
+            .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)));
+        },
+      ).catch(() => undefined);
+      await db.delete(organizationsTable).where(eq(organizationsTable.id, organizationId)).catch(() => undefined);
+    }
+  });
 });

@@ -287,6 +287,7 @@ type DbClient = typeof db;
 interface StructuredCarePlanMetadataInput {
   workId: string;
   organisationId: string;
+  taskId?: string | null;
   title: string;
   generatedDate: string;
   nodes: DocumentNode[];
@@ -316,15 +317,30 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
     generatedDate: input.generatedDate,
     nodes: input.nodes,
   });
-  const participant = await resolveBoundSubjectParticipantForCompletedWork(input.organisationId, input.workId);
-  if (!participant) return declaredFields;
+  const participant = await resolveBoundSubjectParticipantForCompletedWork(
+    input.organisationId,
+    input.workId,
+    input.taskId,
+  );
+  if (!participant) {
+    console.warn("[CompletedWorkExport] subject participant lookup failed for care plan cover", {
+      completedWorkId: input.workId,
+      taskId: input.taskId ?? null,
+      organisationId: input.organisationId,
+    });
+    return {
+      ...declaredFields,
+      participantName: "Not recorded",
+      ndisNumber: "Not recorded",
+      dateOfBirth: "Not recorded",
+    };
+  }
 
   return {
     participantName: firstNonEmpty(
       participant.displayName,
       participant.preferredName,
-      declaredFields.participantName,
-    ) ?? "Participant not recorded",
+    ) ?? "Not recorded",
     ndisNumber: firstNonEmpty(
       participant.externalParticipantId,
       findParticipantMetadataValue(participant.metadata, [
@@ -354,28 +370,65 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
 async function resolveBoundSubjectParticipantForCompletedWork(
   organisationId: string,
   completedWorkId: string,
+  taskId?: string | null,
 ): Promise<ParticipantCoverRecord | null> {
   const result = await withCompletedWorkExportTenant(
     organisationId,
     "completed_work.export.subject_participant",
     async (client) => client.execute(sql`
+      WITH direct_task AS (
+        SELECT ${taskId ?? null}::text AS task_id
+        WHERE ${taskId ?? null}::text IS NOT NULL
+      ),
+      artifact_task AS (
+        SELECT wa.task_id
+        FROM work_artifacts wa
+        WHERE wa.organization_id = ${organisationId}
+          AND wa.completed_work_id = ${completedWorkId}
+          AND wa.task_id IS NOT NULL
+        ORDER BY wa.created_at DESC
+        LIMIT 1
+      ),
+      manifest_task AS (
+        SELECT es.task_id
+        FROM completed_work cw
+        INNER JOIN work_package_manifests wpm
+          ON (wpm.id = cw.manifest_id OR wpm.completed_work_id = cw.id)
+         AND wpm.organization_id = cw.organization_id
+        INNER JOIN execution_sessions es
+          ON es.execution_id = wpm.execution_id
+         AND es.organization_id = cw.organization_id
+        WHERE cw.organization_id = ${organisationId}
+          AND cw.id = ${completedWorkId}
+          AND es.task_id IS NOT NULL
+        ORDER BY es.created_at DESC
+        LIMIT 1
+      ),
+      task_source AS (
+        SELECT task_id FROM direct_task
+        UNION ALL
+        SELECT task_id FROM artifact_task
+        WHERE NOT EXISTS (SELECT 1 FROM direct_task)
+        UNION ALL
+        SELECT task_id FROM manifest_task
+        WHERE NOT EXISTS (SELECT 1 FROM direct_task)
+          AND NOT EXISTS (SELECT 1 FROM artifact_task)
+      )
       SELECT
         p.display_name AS "displayName",
         p.preferred_name AS "preferredName",
         p.external_participant_id AS "externalParticipantId",
         p.metadata AS "metadata"
-      FROM execution_sessions es
+      FROM task_source ts
       INNER JOIN task_participants tp
-        ON tp.task_id = es.task_id
-       AND tp.organization_id = es.organization_id
+        ON tp.task_id = ts.task_id
+       AND tp.organization_id = ${organisationId}
        AND tp.role = 'subject'
       INNER JOIN participants p
         ON p.id = tp.participant_id
-       AND p.organization_id = es.organization_id
+       AND p.organization_id = tp.organization_id
        AND p.deleted_at IS NULL
-      WHERE es.organization_id = ${organisationId}
-        AND es.metadata->>'completedWorkId' = ${completedWorkId}
-      ORDER BY es.created_at DESC
+      ORDER BY tp.created_at DESC
       LIMIT 1
     `),
   );
@@ -426,7 +479,7 @@ function buildCarePlanMetadata(doc: {
       "participant name",
       "name",
       "client name",
-    ]) || participantNameFromTitle(doc.title) || "Participant not recorded",
+    ]) || "Not recorded",
     ndisNumber: firstMetadataValue(valueByKey, [
       "ndis number",
       "ndis no",
@@ -444,6 +497,7 @@ function buildCarePlanMetadata(doc: {
       "created date",
     ]) || doc.generatedDate,
     reviewDate: firstMetadataValue(valueByKey, [
+      "date for review",
       "next review date",
       "review date",
       "scheduled review date",
@@ -508,13 +562,6 @@ function normaliseMetadataKey(key: string): string {
     .replace(/[:|]+$/g, "")
     .trim()
     .toLowerCase();
-}
-
-function participantNameFromTitle(title: string): string | null {
-  const clean = title.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-  const match = clean.match(/\b(?:care plan|support plan)\s+(?:for\s+)?([A-Z][A-Za-z' -]{2,80})/i)
-    ?? clean.match(/\b([A-Z][A-Za-z' -]{2,80})\s+(?:care plan|support plan)\b/i);
-  return match?.[1]?.trim() ?? null;
 }
 
 // ─── Exporter interface ───────────────────────────────────────────────────────
@@ -1339,8 +1386,9 @@ export class CompletedWorkExportService {
     organisationName: string;
     format:         ExportFormat;
     actorUserId:    string;
+    taskId?:        string | null;
   }): Promise<ExportResult> {
-    const { workId, organisationId, organisationName, format, actorUserId } = params;
+    const { workId, organisationId, organisationName, format, actorUserId, taskId } = params;
 
     // Validate format before any DB access (fail fast)
     if (!["md", "pdf", "docx", "xlsx"].includes(format)) {
@@ -1382,6 +1430,7 @@ export class CompletedWorkExportService {
       ? await buildStructuredCarePlanMetadata({
           workId,
           organisationId,
+          taskId,
           title: work.title,
           generatedDate,
           nodes,

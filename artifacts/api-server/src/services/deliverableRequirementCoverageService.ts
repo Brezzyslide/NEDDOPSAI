@@ -1842,8 +1842,8 @@ function evaluateCarePlanCitationFindings(
   }
 
   for (const claim of extractCarePlanAccountableClaims(requirement, section)) {
-    if (claim.kind === "adl_support_level") {
-      findings.push(validateAdlAccountableClaim(requirement.id, claim, chunks));
+    if (claim.kind === "mapped_support_value") {
+      findings.push(validateMappedSupportClaim(requirement.id, claim, chunks));
       continue;
     }
     if (verifiedSources.length === 0) {
@@ -1934,13 +1934,13 @@ function classifyEvidenceSourceCitationMode(
   source: PerRequirementEvidenceSource,
   requirement: DeliverableRequirement,
 ): PerRequirementEvidenceCitationMode {
-  if (source.citationMode) return source.citationMode;
   if (isAuthoredTemplateContentPart(source.passage, requirement.fixedContent)) return "BLUEPRINT_AUTHORED";
   if (isAuthoredCompletionPromptPart(source.passage, requirement.completionPrompt)) return "BLUEPRINT_AUTHORED";
   const evidenceClass = source.evidenceClass?.toLowerCase() ?? "";
-  if (/\b(?:blueprint|fixed_content|fixed-content|completion_prompt|completion-prompt|authored)\b/.test(evidenceClass)) {
+  if (/\b(?:blueprint|fixed_content|fixed-content|completion_prompt|completion-prompt|authored|system_derived|system-derived|derived_guidance|derived-guidance)\b/.test(evidenceClass)) {
     return "BLUEPRINT_AUTHORED";
   }
+  if (source.citationMode) return source.citationMode;
   return "VERBATIM_SPAN";
 }
 
@@ -2068,7 +2068,7 @@ function extractValueEvidencePassage(value: string, text: string): string {
 
 type AccountableCarePlanClaim =
   | { kind: "exact"; label: string; value: string; claim: string }
-  | { kind: "adl_support_level"; activity: string; supportLevel: string; sourceValue: string; mappingMode: string; chunkId: string; claim: string };
+  | { kind: "mapped_support_value"; requirementId: string; activity: string; supportLevel: string; sourceValue: string; mappingMode: string; chunkId: string; claim: string };
 
 function extractCarePlanAccountableClaims(
   requirement: DeliverableRequirement,
@@ -2126,16 +2126,17 @@ function extractCarePlanAccountableClaims(
     }
   }
 
-  if (requirement.id === "care-plan-mobility-strategy") {
+  if (requirement.id === "care-plan-mobility-strategy" && (section.structuredRows ?? []).length === 0) {
     for (const value of extractMobilityAidClaims(content)) {
       claims.push({ kind: "exact", label: "mobility aid/status", value, claim: `${section.heading}: mobility aid/status ${value}` });
     }
   }
 
-  if (requirement.id === "care-plan-undertaking-adl") {
+  if (requirement.id === "care-plan-undertaking-adl" || requirement.id === "care-plan-mobility-strategy") {
     for (const row of section.structuredRows ?? []) {
       claims.push({
-        kind: "adl_support_level",
+        kind: "mapped_support_value",
+        requirementId: requirement.id,
         activity: row.activity,
         supportLevel: row.supportLevel,
         sourceValue: row.sourceValue,
@@ -2156,9 +2157,9 @@ function isCarePlanSystemGeneratedAccountableValue(requirementId: string, label:
   return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
 }
 
-function validateAdlAccountableClaim(
+function validateMappedSupportClaim(
   requirementId: string,
-  claim: Extract<AccountableCarePlanClaim, { kind: "adl_support_level" }>,
+  claim: Extract<AccountableCarePlanClaim, { kind: "mapped_support_value" }>,
   chunks: Map<string, EvidenceChunk>,
 ): CarePlanCitationFinding {
   const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
@@ -2176,7 +2177,7 @@ function validateAdlAccountableClaim(
       accountableValue: claim.supportLevel,
       chunkId: claim.chunkId,
       citedText: claim.sourceValue,
-      reason: "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping.",
+      reason: "Mapped row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping.",
     };
   }
   if (!claim.chunkId.trim()) {
@@ -2187,7 +2188,7 @@ function validateAdlAccountableClaim(
       accountable: true,
       passed: false,
       accountableValue: claim.supportLevel,
-      reason: "ADL support level is accountable and has no chunk citation.",
+      reason: "Mapped care-plan support value is accountable and has no chunk citation.",
     };
   }
   if (!chunks.has(claim.chunkId)) {
@@ -2200,7 +2201,24 @@ function validateAdlAccountableClaim(
       accountableValue: claim.supportLevel,
       chunkId: claim.chunkId,
       citedText: claim.sourceValue,
-      reason: "ADL support level mapping cites a chunk that is not present in the runtime evidence pack; deterministic mapping cannot be verified without the cited chunk.",
+      reason: "Mapped care-plan support value cites a chunk that is not present in the runtime evidence pack; deterministic mapping cannot be verified without the cited chunk.",
+    };
+  }
+  if (requirementId === "care-plan-mobility-strategy") {
+    const chunk = chunks.get(claim.chunkId);
+    const sourceValueSupported = chunk ? exactValueInEvidence(claim.sourceValue, chunk.text) : false;
+    return {
+      requirementId,
+      claim: claim.claim,
+      mode: sourceValueSupported ? "VERIFIED_MAPPING" : "UNSUPPORTED_CITATION",
+      accountable: true,
+      passed: sourceValueSupported,
+      accountableValue: claim.supportLevel,
+      chunkId: claim.chunkId,
+      citedText: claim.sourceValue,
+      reason: sourceValueSupported
+        ? `Mobility mapped value is derived from cited source value "${claim.sourceValue}".`
+        : `Mobility source value "${claim.sourceValue}" was not found in the cited chunk.`,
     };
   }
   if (claim.mappingMode === "VERIFIED_MAPPING" && expected.includes(claim.supportLevel)) {
@@ -2639,10 +2657,12 @@ function evaluateSubstantiveClauseContent(
   }
   if (adequacyCriteria.length > 0) {
     const semanticCriteria = adequacyCriteria.filter(isUnverifiedSemanticCriterion);
-    const mechanicallyCheckableCriteria = adequacyCriteria.filter((criterion) =>
-      !isUnverifiedSemanticCriterion(criterion) &&
-      !isBlueprintAuthoringGapCriterion(criterion),
-    );
+    const mechanicallyCheckableCriteria = adequacyCriteria
+      .filter((criterion) =>
+        !isUnverifiedSemanticCriterion(criterion) &&
+        !isBlueprintAuthoringGapCriterion(criterion),
+      )
+      .filter((criterion) => adequacyCriterionAppliesToContent(criterion, normalised));
     const criteriaResults = mechanicallyCheckableCriteria.map((criterion) => ({
       criterion,
       passed: adequacyCriterionMatchesContent(criterion, normalised),
@@ -3099,6 +3119,45 @@ function adequacyCriterionMatchesContent(criterion: string, normalisedContent: s
   if (terms.length === 0) return normalisedContent.includes(normaliseContent(criterion));
   const requiredMatches = Math.min(terms.length, terms.length <= 3 ? terms.length : Math.ceil(terms.length * 0.65));
   return terms.filter((term) => normalisedContent.includes(term)).length >= requiredMatches;
+}
+
+function adequacyCriterionAppliesToContent(criterion: string, normalisedContent: string): boolean {
+  const criterionKey = normaliseContent(criterion);
+  if (criterionKey.includes("where the plan was developed using allied health reports or a bsp")) {
+    return /\b(?:allied health|behaviour support plan|bsp|report|reports)\b/.test(normalisedContent) &&
+      /\b(?:developed|based|source|sources|using|from)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("ndis goals present where an ndis plan exists")) {
+    if (/\bndis plan\b/.test(normalisedContent) && /\b(?:no|not recorded|not available|not supplied|missing)\b/.test(normalisedContent)) {
+      return false;
+    }
+    return /\b(?:ndis plan|ndis goal|ndis goals)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("where an aid is used") || criterionKey.includes("aid is used")) {
+    return mobilityAidUseIsDeclared(normalisedContent);
+  }
+  if (criterionKey.includes("where a mealtime management risk assessment is absent")) {
+    return /\b(?:mealtime management risk assessment|risk assessment|assessment)\b/.test(normalisedContent) &&
+      /\b(?:absent|not recorded|not available|not supplied|missing)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("where no hands on strategy is recorded")) {
+    return /\b(?:no|not recorded|not required|not applicable)\b/.test(normalisedContent) &&
+      /\b(?:hands on|hands-on|strategy|required)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("where the plan is provided to family or carer")) {
+    return /\bprovided to\b/.test(normalisedContent) && /\b(?:family|carer|representative|guardian|nominee)\b/.test(normalisedContent);
+  }
+  return true;
+}
+
+function mobilityAidUseIsDeclared(normalisedContent: string): boolean {
+  if (/\b(?:no|not|without)\s+(?:an?\s+)?(?:separate\s+)?(?:mobility\s+)?(?:aid|equipment|walking aid)\b/.test(normalisedContent)) {
+    return false;
+  }
+  if (/\b(?:aid|equipment)\s+(?:not\s+)?(?:required|recorded)\b/.test(normalisedContent) && /\bnot\b/.test(normalisedContent)) {
+    return false;
+  }
+  return /\b(?:walker|walking frame|wheelchair|cane|crutch|hoist|transfer aid|mobility aid|aid or equipment used)\b/.test(normalisedContent);
 }
 
 function isBlueprintAuthoringGapCriterion(criterion: string): boolean {

@@ -3068,6 +3068,125 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(report.missing[0]?.reason).toContain("has no verified citation");
   });
 
+  it("does not require citations for blueprint-authored fixed care-plan content", () => {
+    const fixedText = "This care plan must be reviewed if the participant's support needs change.";
+    const profile = carePlanSingleRequirementProfile("care-plan-review-guidance", "Review Guidance");
+    profile.requirements[0]!.fixedContent = [fixedText];
+    const report = evaluateDeliverableRequirementCoverage(`## Review Guidance\n\n${fixedText}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-review-guidance",
+        heading: "Review Guidance",
+        content: fixedText,
+        evidenceSources: [{
+          chunkId: "missing-fixed-content",
+          documentTitle: "Care plan blueprint",
+          passage: fixedText,
+          location: "blueprint",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+          citationMode: "VERBATIM_SPAN",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("unrelated", "Participant-specific evidence is unrelated to the authored template sentence."),
+    });
+
+    expect(report.requirementResults[0]?.citationFindings ?? []).toHaveLength(0);
+  });
+
+  it("does not require citations for system-derived care-plan guidance", () => {
+    const guidance = "Allow independent walking and escalate any change in mobility or falls risk.";
+    const profile = carePlanSingleRequirementProfile("care-plan-mobility-strategy", "Mobility and Mobility Strategy");
+    const report = evaluateDeliverableRequirementCoverage(`## Mobility and Mobility Strategy\n\n${guidance}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-mobility-strategy",
+        heading: "Mobility and Mobility Strategy",
+        content: guidance,
+        evidenceSources: [{
+          chunkId: "missing-system-derived",
+          documentTitle: "Care plan generator",
+          passage: guidance,
+          location: "server-derived mobility guidance",
+          evidenceClass: "SYSTEM_DERIVED",
+          citationMode: "VERBATIM_SPAN",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("mobility-source", "Walk without aid: Without support."),
+    });
+
+    expect(report.requirementResults[0]?.citationFindings ?? []).toHaveLength(0);
+  });
+
+  it("does not evaluate aid-use adequacy criteria when no aid is used", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-mobility-strategy", "Mobility and Mobility Strategy");
+    profile.requirements[0]!.adequacyCriteria = ["Where an aid is used, it is named and its use described"];
+    const content = "Michael walks without an aid and no separate equipment requirement is recorded.";
+    const report = evaluateDeliverableRequirementCoverage(`## Mobility and Mobility Strategy\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-mobility-strategy",
+        heading: "Mobility and Mobility Strategy",
+        content,
+        evidenceSources: [{
+          chunkId: "mobility-source",
+          documentTitle: "Intake checklist",
+          passage: "Walk without aid: Without support",
+          location: "p. 2",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("mobility-source", "Walk without aid: Without support."),
+    });
+
+    expect(report.missing.map((item) => item.requirementId)).not.toContain("care-plan-mobility-strategy");
+    expect(report.requirementResults[0]?.finalResult).toBe("SATISFIED");
+  });
+
+  it.each([
+    {
+      requirementId: "care-plan-support-plan-meeting",
+      description: "Support Plan Meeting",
+      criterion: "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+      content: "The support plan was developed at the planning meeting with the participant and staff.",
+    },
+    {
+      requirementId: "care-plan-goals",
+      description: "Goals",
+      criterion: "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
+      content: "Personal goals are recorded from the participant conversation. No NDIS plan was recorded in retrieved evidence.",
+    },
+    {
+      requirementId: "care-plan-mealtime-management-strategy",
+      description: "Mealtime Management Strategy",
+      criterion: "Where a mealtime management risk assessment is absent, states that the assessment is not recorded in the retrieved evidence and does not invent an assessment date",
+      content: "The mealtime routine records worker prompting and supervision from retrieved participant evidence.",
+    },
+    {
+      requirementId: "care-plan-mealtime-management-strategy",
+      description: "Mealtime Management Strategy",
+      criterion: "Where no hands-on strategy is recorded as required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+      content: "The mealtime routine records worker prompting and supervision from retrieved participant evidence.",
+    },
+    {
+      requirementId: "care-plan-client-endorsement",
+      description: "Client Endorsement",
+      criterion: "Where the plan is provided to family or carer, consent is recorded",
+      content: "The plan is provided to the participant. Signature and date fields remain available for completion.",
+    },
+  ])("does not apply conditional adequacy criterion when its trigger is absent: $requirementId", ({ requirementId, description, criterion, content }) => {
+    const profile = carePlanSingleRequirementProfile(requirementId, description);
+    profile.requirements[0]!.adequacyCriteria = [criterion];
+    const report = evaluateDeliverableRequirementCoverage(`## ${description}\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId,
+        heading: description,
+        content,
+        evidenceSources: [],
+      }],
+      evidencePack: evidencePackWithChunk("unused", "No conditional trigger evidence."),
+    });
+
+    expect(report.missing.map((item) => item.requirementId)).not.toContain(requirementId);
+    expect(report.requirementResults[0]?.finalResult).toBe("SATISFIED");
+  });
+
   it("rebinds exact evidence-source passages to another selected chunk when the generated chunkId is wrong", () => {
     const profile = carePlanSingleRequirementProfile("care-plan-about-me", "About Me");
     const passage = "Michael takes pride in his appearance and enjoys fashion, particularly shoes and tattoos, which reflect his sense of individuality and personal style.";
@@ -3263,9 +3382,11 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       evidencePack: evidencePackWithChunk("chunk-adl", "Brush teeth: Support required."),
     });
 
-    expect(report.missing[0]?.reason).toContain("ADL support levels are accountable values and cannot pass as cited interpretation");
     expect(report.requirementResults[0]?.citationFindings?.some((finding) =>
       finding.mode === "CITED_INTERPRETATION_UNVERIFIED" && !finding.passed,
+    )).toBe(true);
+    expect(report.requirementResults[0]?.citationFindings?.some((finding) =>
+      finding.reason.includes("ADL support levels are accountable values and cannot pass as cited interpretation"),
     )).toBe(true);
   });
 
