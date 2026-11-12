@@ -690,8 +690,8 @@ describe("CompletedWorkExportService", () => {
       rows: [{
         displayName: "Michael Rocca",
         preferredName: null,
-        externalParticipantId: "430000000",
-        metadata: { dateOfBirth: "1 January 1980" },
+        externalParticipantId: null,
+        metadata: {},
       }],
     });
   }
@@ -764,13 +764,9 @@ describe("CompletedWorkExportService", () => {
       "",
       "## Support Plan Meeting",
       "",
-      "| Field | Value |",
-      "| --- | --- |",
-      "| Client name | Not recorded ### Service manager contact |",
-      "| NDIS number | Not recorded |",
-      "| Date of birth | Not recorded |",
-      "| Plan date | 10 November 2026 |",
-      "| Date for review | 10 November 2027 |",
+      "Client’s Name: Body Value Date of Birth 24/08/1975 Gender: Male Language Spoken: English",
+      "NDIS Number: 430324461 Diagnosis: Moderate Intellectual Disability People Present: not recorded",
+      "Plan Date: 10 November 2026 Date for Review: 25/11/2026",
       "",
       "## Document Control",
       "",
@@ -797,10 +793,10 @@ describe("CompletedWorkExportService", () => {
 
     for (const output of [docxXml, pdfText]) {
       expect(output).toContain("Michael Rocca");
-      expect(output).toContain("430000000");
-      expect(output).toContain("1 January 1980");
+      expect(output).toContain("430324461");
+      expect(output).toContain("24/08/1975");
       expect(output).toContain("10 November 2026");
-      expect(output).toContain("10 November 2027");
+      expect(output).toContain("25/11/2026");
       expect(output).not.toContain("Right-click and update field");
       expect(output).not.toContain("Table of Contents");
     }

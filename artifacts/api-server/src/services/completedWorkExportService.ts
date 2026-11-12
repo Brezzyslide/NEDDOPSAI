@@ -349,7 +349,7 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
     };
   }
 
-  return {
+  const metadata = {
     participantName: firstNonEmpty(
       participant.displayName,
       participant.preferredName,
@@ -378,6 +378,25 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
     planDate: declaredFields.planDate,
     reviewDate: declaredFields.reviewDate,
   };
+  logMissingCarePlanCoverDeclaredFields(input, metadata);
+  return metadata;
+}
+
+function logMissingCarePlanCoverDeclaredFields(
+  input: StructuredCarePlanMetadataInput,
+  metadata: CarePlanDocumentMetadata,
+): void {
+  const missingFields: string[] = [];
+  if (!isRecorded(metadata.ndisNumber)) missingFields.push("NDIS number");
+  if (!isRecorded(metadata.dateOfBirth)) missingFields.push("date of birth");
+  if (!isRecorded(metadata.reviewDate)) missingFields.push("review date");
+  if (missingFields.length === 0) return;
+  console.warn("[CompletedWorkExport] Support Plan Meeting declared fields missing for care plan cover", {
+    completedWorkId: input.workId,
+    taskId: input.taskId ?? null,
+    organisationId: input.organisationId,
+    missingFields,
+  });
 }
 
 async function resolveBoundSubjectParticipantForCompletedWork(
@@ -418,6 +437,10 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | nu
     if (clean && !/^not recorded$/i.test(clean) && !/^participant not recorded$/i.test(clean)) return clean;
   }
   return null;
+}
+
+function isRecorded(value: string | null | undefined): boolean {
+  return Boolean(firstNonEmpty(value));
 }
 
 function findParticipantMetadataValue(metadata: unknown, keys: string[]): string | null {
@@ -481,8 +504,9 @@ function buildCarePlanMetadata(doc: {
 
 function collectSupportPlanMeetingMetadata(nodes: DocumentNode[]): Map<string, string> {
   const valueByKey = new Map<string, string>();
+  const pendingKey = { value: null as string | null };
   const supportPlanNodes = nodesForHeading(nodes, /support plan meeting/i);
-  for (const node of supportPlanNodes) collectMetadataValues(node, valueByKey);
+  for (const node of supportPlanNodes) collectMetadataValues(node, valueByKey, pendingKey);
   return valueByKey;
 }
 
@@ -499,7 +523,11 @@ function nodesForHeading(nodes: DocumentNode[], pattern: RegExp): DocumentNode[]
   return scoped;
 }
 
-function collectMetadataValues(node: DocumentNode, values: Map<string, string>): void {
+function collectMetadataValues(
+  node: DocumentNode,
+  values: Map<string, string>,
+  pendingKey: { value: string | null },
+): void {
   if (node.type === "table") {
     for (const row of node.children ?? []) {
       const cells = (row.children ?? []).map(cell => (cell.content ?? "").trim()).filter(Boolean);
@@ -509,10 +537,120 @@ function collectMetadataValues(node: DocumentNode, values: Map<string, string>):
     }
   }
   if (node.type === "paragraph" || node.type === "list_item") {
-    const match = (node.content ?? "").match(/^([^:|]{2,80})[:|]\s*(.+)$/);
+    const content = (node.content ?? "").trim();
+    if (pendingKey.value && content && !declaredFieldLabelOnly(content)) {
+      addMetadataValue(values, pendingKey.value, content);
+      pendingKey.value = null;
+    }
+    pendingKey.value = collectDeclaredFieldValues(content, values) ?? pendingKey.value;
+    const match = content.match(/^([^:|]{2,80})[:|]\s*(.+)$/);
     if (match) addMetadataValue(values, match[1]!, match[2]!);
   }
-  for (const child of node.children ?? []) collectMetadataValues(child, values);
+  for (const child of node.children ?? []) collectMetadataValues(child, values, pendingKey);
+}
+
+const SUPPORT_PLAN_DECLARED_FIELD_ALIASES: Array<{ key: string; aliases: string[] }> = [
+  {
+    key: "participant name",
+    aliases: ["participant name", "client's name", "client name"],
+  },
+  {
+    key: "ndis number",
+    aliases: ["ndis participant number", "ndis number", "ndis no"],
+  },
+  {
+    key: "date of birth",
+    aliases: ["date of birth", "birth date", "dob"],
+  },
+  {
+    key: "gender",
+    aliases: ["gender"],
+  },
+  {
+    key: "language spoken",
+    aliases: ["language spoken", "language"],
+  },
+  {
+    key: "plan date",
+    aliases: ["care plan date", "date prepared", "created date", "plan date"],
+  },
+  {
+    key: "date for review",
+    aliases: ["next review date", "date for review", "review date", "scheduled review date"],
+  },
+  {
+    key: "diagnosis",
+    aliases: ["diagnosis"],
+  },
+  {
+    key: "people present",
+    aliases: ["people present"],
+  },
+  {
+    key: "support plan developed by",
+    aliases: ["support plan developed by", "support plan developed"],
+  },
+];
+
+const SUPPORT_PLAN_DECLARED_FIELD_LOOKUP = new Map(
+  SUPPORT_PLAN_DECLARED_FIELD_ALIASES.flatMap(({ key, aliases }) =>
+    aliases.map(alias => [normaliseMetadataKey(alias), key] as const),
+  ),
+);
+
+const SUPPORT_PLAN_DECLARED_FIELD_PATTERN = new RegExp(
+  SUPPORT_PLAN_DECLARED_FIELD_ALIASES
+    .flatMap(({ aliases }) => aliases)
+    .sort((left, right) => right.length - left.length)
+    .map(declaredFieldAliasPattern)
+    .join("|"),
+  "gi",
+);
+
+function collectDeclaredFieldValues(text: string, values: Map<string, string>): string | null {
+  const matches = Array.from(text.matchAll(SUPPORT_PLAN_DECLARED_FIELD_PATTERN));
+  if (matches.length === 0) return null;
+  let pendingKey: string | null = null;
+  for (let index = 0; index < matches.length; index++) {
+    const match = matches[index]!;
+    const label = match[0] ?? "";
+    const key = SUPPORT_PLAN_DECLARED_FIELD_LOOKUP.get(normaliseDeclaredFieldLabel(label));
+    if (!key) continue;
+    const valueStart = (match.index ?? 0) + label.length;
+    const nextStart = matches[index + 1]?.index ?? text.length;
+    const value = cleanDeclaredFieldValue(text.slice(valueStart, nextStart));
+    if (value) {
+      addMetadataValue(values, key, value);
+      pendingKey = null;
+    } else {
+      pendingKey = key;
+    }
+  }
+  return pendingKey;
+}
+
+function declaredFieldLabelOnly(text: string): boolean {
+  const clean = normaliseDeclaredFieldLabel(text);
+  return SUPPORT_PLAN_DECLARED_FIELD_LOOKUP.has(clean);
+}
+
+function cleanDeclaredFieldValue(value: string): string {
+  return value
+    .replace(/^[\s:|–—-]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function declaredFieldAliasPattern(alias: string): string {
+  return alias
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/'/g, "['’]")
+    .replace(/\s+/g, "\\s+")
+    .concat("\\s*:?\\s*");
+}
+
+function normaliseDeclaredFieldLabel(label: string): string {
+  return normaliseMetadataKey(label.replace(/[\s:|]+$/g, ""));
 }
 
 function addMetadataValue(values: Map<string, string>, key: string, value: string): void {
@@ -532,7 +670,9 @@ function firstMetadataValue(values: Map<string, string>, keys: string[]): string
 
 function normaliseMetadataKey(key: string): string {
   return stripInlineMarkup(key)
+    .replace(/[’‘]/g, "'")
     .replace(/\s+/g, " ")
+    .trim()
     .replace(/[:|]+$/g, "")
     .trim()
     .toLowerCase();
