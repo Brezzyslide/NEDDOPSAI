@@ -806,21 +806,37 @@ describe("Sprint 38 Batch One gate fixes", () => {
         "| Field | Value | Worker guidance |",
         "| --- | --- | --- |",
         "| Transfer method | Transfers to and from bed without support. | Allow independent bed transfers and escalate any change in falls risk. |",
+        "| Mobility strategy | Allow independent bed transfers and escalate any change in falls risk. | Allow independent bed transfers and escalate any change in falls risk. |",
       ].join("\n"),
       evidenceSources: [],
-      structuredRows: [{
-        activity: "Transfer method",
-        supportLevel: "Transfers to and from bed without support.",
-        workerDescription: "Allow independent bed transfers and escalate any change in falls risk.",
-        sourceValue: "Transfer to/from bed: Without support",
-        chunkId: "chunk-transfer",
-        mappingMode: "VERIFIED_MAPPING" as const,
-        derivedGuidance: {
-          text: "Allow independent bed transfers and escalate any change in falls risk.",
-          provenance: "SYSTEM_DERIVED" as const,
-          basisField: "Transfer method",
+      structuredRows: [
+        {
+          activity: "Transfer method",
+          supportLevel: "Transfers to and from bed without support.",
+          workerDescription: "Allow independent bed transfers and escalate any change in falls risk.",
+          sourceValue: "Transfer to/from bed: Without support",
+          chunkId: "chunk-transfer",
+          mappingMode: "VERIFIED_MAPPING" as const,
+          derivedGuidance: {
+            text: "Allow independent bed transfers and escalate any change in falls risk.",
+            provenance: "SYSTEM_DERIVED" as const,
+            basisField: "Transfer method",
+          },
         },
-      }],
+        {
+          activity: "Mobility strategy",
+          supportLevel: "Allow independent bed transfers and escalate any change in falls risk.",
+          workerDescription: "Allow independent bed transfers and escalate any change in falls risk.",
+          sourceValue: "Transfer to/from bed: Without support",
+          chunkId: "chunk-transfer",
+          mappingMode: "VERIFIED_MAPPING" as const,
+          derivedGuidance: {
+            text: "Allow independent bed transfers and escalate any change in falls risk.",
+            provenance: "SYSTEM_DERIVED" as const,
+            basisField: "Mobility strategy",
+          },
+        },
+      ],
     };
     const report = evaluateDeliverableRequirementCoverage(assembleDeliverableMarkdownFromSections([mobilitySection]), profile, {
       deliverableSections: [mobilitySection],
@@ -839,6 +855,111 @@ describe("Sprint 38 Batch One gate fixes", () => {
       }),
     ]));
     expect(mobility?.citationFindings?.some((finding) => finding.mode === "UNSUPPORTED_CITATION")).toBe(false);
+  });
+
+  it("verifies Mobility source values independently and leaves stale prose spans to the derived-section drop path", () => {
+    const profile = carePlanCoverageProfile();
+    const mobilitySection = {
+      requirementId: "care-plan-mobility-strategy",
+      heading: "Mobility and Mobility Strategy",
+      content: [
+        "| Field | Value | Worker guidance |",
+        "| --- | --- | --- |",
+        "| Transfer method | Transfers to and from bed without support. | Transfer method: Transfers to and from bed without support. |",
+        "| Number of workers required | No worker assistance recorded for walking without an aid or bed transfers. | Number of workers required: No worker assistance recorded for walking without an aid or bed transfers. |",
+        "| Mobility strategy | Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk. | Mobility strategy: Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk. |",
+      ].join("\n"),
+      evidenceSources: [],
+      structuredRows: [
+        {
+          activity: "Transfer method",
+          supportLevel: "Transfers to and from bed without support.",
+          workerDescription: "Transfer method: Transfers to and from bed without support.",
+          sourceValue: "Without support",
+          chunkId: "chunk-transfer",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        },
+        {
+          activity: "Number of workers required",
+          supportLevel: "No worker assistance recorded for walking without an aid or bed transfers.",
+          workerDescription: "Number of workers required: No worker assistance recorded for walking without an aid or bed transfers.",
+          sourceValue: "Without support",
+          chunkId: "chunk-transfer",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        },
+        {
+          activity: "Mobility strategy",
+          supportLevel: "Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk.",
+          workerDescription: "Mobility strategy: Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk.",
+          sourceValue: "Without support",
+          chunkId: "chunk-transfer",
+          mappingMode: "VERIFIED_MAPPING" as const,
+        },
+      ],
+    };
+    const report = evaluateDeliverableRequirementCoverage(assembleDeliverableMarkdownFromSections([mobilitySection]), profile, {
+      deliverableSections: [mobilitySection],
+      evidencePack: evidencePackWithChunk({
+        chunkId: "chunk-transfer",
+        text: "Walking: Without support. Transfer to/from bed: Without support.",
+      }),
+    });
+    const mobility = report.requirementResults.find((item) => item.requirementId === "care-plan-mobility-strategy");
+
+    expect(mobility?.finalResult).toBe("SATISFIED");
+    expect(mobility?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "VERIFIED_MAPPING",
+        passed: true,
+        citedText: "Without support",
+      }),
+    ]));
+    expect(mobility?.citationFindings?.some((finding) => finding.mode === "UNSUPPORTED_CITATION")).toBe(false);
+  });
+
+  it("scopes Communication strategy missing-value checks to the strategy row", () => {
+    const profile = carePlanCoverageProfile();
+    const communicationSection = {
+      requirementId: "care-plan-communication-strategy",
+      heading: "Communication and Communication Strategy",
+      content: [
+        "| Field | Value |",
+        "| --- | --- |",
+        "| Verbal / non-verbal | Michael communicates verbally in English. |",
+        "| Expressive capacity | not recorded in retrieved evidence |",
+        "| Receptive capacity | Michael responds to short clear prompts. |",
+        "| Communication strategy | Workers should gain Michael's attention, use short clear prompts, allow time for response, and record communication changes. |",
+      ].join("\n"),
+      evidenceSources: [],
+      structuredRows: [],
+    };
+    const report = evaluateDeliverableRequirementCoverage(assembleDeliverableMarkdownFromSections([communicationSection]), profile, {
+      deliverableSections: [communicationSection],
+      evidencePack: emptyEvidencePack(),
+    });
+    const communication = report.requirementResults.find((item) => item.requirementId === "care-plan-communication-strategy");
+
+    expect(communication?.failureReason ?? "").not.toContain("Strategy narrative present");
+  });
+
+  it("keeps server-derived source values atomic instead of composing labelled checklist fragments", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(engine).toContain("sourceItems: [...existing.sourceItems, mapping.sourceItem]");
+    expect(engine).not.toContain("derived.sourceItems.join");
+    expect(engine).not.toContain("sourceValue: `${existing.sourceValue}; ${mapping.sourceItem}: ${value}`");
+    expect(engine).not.toContain("existing.sourceValue = `${existing.sourceValue}; ${mapping.sourceItem}: ${value}`");
+  });
+
+  it("records stale model evidence sources as dropped-stale when server-derived sections replace them", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
+
+    expect(engine).toContain("recordDroppedStaleModelEvidenceSources(section, derivedSection)");
+    expect(engine).toContain("care-plan-disaster-management-strategy");
+    expect(engine).toContain("dropped-stale evidenceSource");
+    expect(engine).toContain("reasonCode: \"dropped_stale_evidence_source\"");
+    expect(coverage).not.toContain("sectionFactsAreMapped");
   });
 
   it("does not satisfy ADL when all canonical rows declare no assessment", () => {

@@ -653,6 +653,7 @@ export interface ParsedDeliverableSuppressedClaim {
   section: string;
   claim: string;
   reason: string;
+  reasonCode?: string;
 }
 
 export interface ParsedDeliverableStructuredRow {

@@ -1574,6 +1574,7 @@ function validateRepresentedRequirement(input: {
   schema: DeliverableOutputSchema;
   structuredSection: PerRequirementDeliverableSection | null;
   structuredSectionsProvided: boolean;
+  evidencePack: EvidencePack | null;
 }): DeliverableRequirementCoverageItem {
   const { requirement } = input;
   const structure = input.structuredSection
@@ -1652,7 +1653,10 @@ function validateRepresentedRequirement(input: {
     }), input);
   }
 
-  const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content, input.standardisation);
+  const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content, input.standardisation, {
+    structuredSection: input.structuredSection,
+    evidencePack: input.evidencePack,
+  });
   if (input.standardisation === "standard_reusable" && (requirement.templateCriteria ?? []).length > 0) {
     const template = evaluateTemplateRequirementContent(requirement, relevant.content);
     const finalResult = template.passed
@@ -2634,6 +2638,10 @@ function evaluateSubstantiveClauseContent(
   requirement: DeliverableRequirement,
   content: string,
   standardisation?: DeliverableRequirementCoverageProfile["standardisation"],
+  context?: {
+    structuredSection: PerRequirementDeliverableSection | null;
+    evidencePack: EvidencePack | null;
+  },
 ): {
   passed: boolean;
   partial: boolean;
@@ -2665,7 +2673,12 @@ function evaluateSubstantiveClauseContent(
       .filter((criterion) => adequacyCriterionAppliesToContent(criterion, normalised));
     const criteriaResults = mechanicallyCheckableCriteria.map((criterion) => ({
       criterion,
-      passed: adequacyCriterionMatchesContent(criterion, normalised),
+      passed: adequacyCriterionMatchesContent(criterion, normalised, {
+        requirement,
+        content,
+        structuredSection: context?.structuredSection ?? null,
+        evidencePack: context?.evidencePack ?? null,
+      }),
     }));
     const missing = criteriaResults.filter((result) => !result.passed).map((result) => result.criterion);
     if (semanticCriteria.length > 0) {
@@ -3061,17 +3074,36 @@ function templateFieldIsRepresented(field: string, content: string): boolean {
   return normalisedContent.includes(normalisedField);
 }
 
-function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {
+function adequacyCriterionMatchesContent(
+  criterion: string,
+  normalisedContent: string,
+  context?: {
+    requirement: DeliverableRequirement;
+    content: string;
+    structuredSection: PerRequirementDeliverableSection | null;
+    evidencePack: EvidencePack | null;
+  },
+): boolean {
   const criterionKey = normaliseContent(criterion);
   if (criterionKey.includes("date for review") && criterionKey.includes("later than the plan date")) {
     return /\bto be confirmed by approver\b/.test(normalisedContent) ||
       /\bdate for review\b/.test(normalisedContent) &&
         /\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b/.test(normalisedContent);
   }
-  if (criterionKey.includes("capacity indicators completed")) {
+  if (criterionKey.includes("capacity indicator completed") || criterionKey.includes("capacity indicators completed")) {
+    if (context?.requirement.id === "care-plan-mobility-strategy") {
+      return mobilityHasVerifiedCapacityIndicator(context.structuredSection, context.evidencePack);
+    }
     return /\b(capacity|verbal|non verbal|expressive|understand|communication)\b/.test(normalisedContent);
   }
   if (criterionKey.includes("strategy narrative present")) {
+    if (context?.requirement.id === "care-plan-mobility-strategy") {
+      return mobilityHasVerifiedStrategyRow(context.structuredSection, context.evidencePack);
+    }
+    if (context?.requirement.id === "care-plan-communication-strategy") {
+      const strategy = extractStrategyCriterionValue(context.content);
+      return Boolean(strategy?.trim() && !isMissingValue(strategy));
+    }
     return normalisedContent.includes("strategy") &&
       !/\b(empty overview|not recorded in the retrieved evidence|not recorded)\b/.test(normalisedContent);
   }
@@ -3119,6 +3151,66 @@ function adequacyCriterionMatchesContent(criterion: string, normalisedContent: s
   if (terms.length === 0) return normalisedContent.includes(normaliseContent(criterion));
   const requiredMatches = Math.min(terms.length, terms.length <= 3 ? terms.length : Math.ceil(terms.length * 0.65));
   return terms.filter((term) => normalisedContent.includes(term)).length >= requiredMatches;
+}
+
+function mobilityHasVerifiedCapacityIndicator(
+  section: PerRequirementDeliverableSection | null,
+  evidencePack: EvidencePack | null,
+): boolean {
+  return (section?.structuredRows ?? []).some((row) =>
+    isMobilityCapacityStatusRow(row) && mobilityStructuredRowHasVerifiedFinding(row, evidencePack)
+  );
+}
+
+function mobilityHasVerifiedStrategyRow(
+  section: PerRequirementDeliverableSection | null,
+  evidencePack: EvidencePack | null,
+): boolean {
+  return (section?.structuredRows ?? []).some((row) =>
+    normaliseCarePlanAdlActivity(row.activity) === "mobility strategy" &&
+    mobilityStructuredRowHasVerifiedFinding(row, evidencePack)
+  );
+}
+
+function isMobilityCapacityStatusRow(row: Pick<CarePlanAdlStructuredRow, "activity">): boolean {
+  return [
+    "walking aid requirement",
+    "aid or equipment used",
+    "transfer method",
+    "number of workers required",
+    "mobility overview",
+  ].includes(normaliseCarePlanAdlActivity(row.activity));
+}
+
+function mobilityStructuredRowHasVerifiedFinding(
+  row: CarePlanAdlStructuredRow,
+  evidencePack: EvidencePack | null,
+): boolean {
+  if (row.mappingMode !== "VERIFIED_MAPPING") return false;
+  const chunks = new Map<string, EvidenceChunk>((evidencePack?.chunks ?? []).map((chunk) => [chunk.chunkId, chunk]));
+  return validateMappedSupportClaim("care-plan-mobility-strategy", {
+    kind: "mapped_support_value",
+    requirementId: "care-plan-mobility-strategy",
+    activity: row.activity,
+    supportLevel: row.supportLevel,
+    sourceValue: row.sourceValue,
+    mappingMode: row.mappingMode,
+    chunkId: row.chunkId,
+    claim: `Mobility and Mobility Strategy: ${row.activity} support level ${row.supportLevel}`,
+  }, chunks).passed;
+}
+
+function extractStrategyCriterionValue(content: string): string | null {
+  for (const table of extractMarkdownTablesFromContent(content)) {
+    for (const row of table.rows) {
+      const label = row[0] ?? "";
+      if (!/\bstrategy\b/i.test(label)) continue;
+      const value = row.slice(1).join(" ").trim();
+      if (value) return value;
+    }
+  }
+  const labelled = content.match(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*\*)?[^:\n|]*strategy[^:\n|]*(?:\*\*)?:\s*([^\n]+)/i);
+  return labelled?.[1]?.trim() ?? null;
 }
 
 function adequacyCriterionAppliesToContent(criterion: string, normalisedContent: string): boolean {

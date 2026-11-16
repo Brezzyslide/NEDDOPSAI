@@ -2693,6 +2693,7 @@ export class UnifiedExecutionEngine {
           section: record.section,
           claim: record.claim,
           reason: record.reason,
+          ...(record.reasonCode ? { reasonCode: record.reasonCode } : {}),
         })),
       } : {}),
       ...(evidenceSelectionRouting.length > 0 ? { evidenceSelectionRouting } : {}),
@@ -2812,6 +2813,7 @@ export class UnifiedExecutionEngine {
             section: record.section,
             claim: record.claim,
             reason: record.reason,
+            ...(record.reasonCode ? { reasonCode: record.reasonCode } : {}),
           })),
         });
         const blockingMessage = artifactGate.failures
@@ -6418,7 +6420,57 @@ function applyServerDerivedCarePlanSectionCells(
   } else {
     derivedSection = section;
   }
+  if (derivedSection !== section) {
+    return recordDroppedStaleModelEvidenceSources(section, derivedSection);
+  }
   return derivedSection;
+}
+
+const SERVER_DERIVED_STALE_SOURCE_DROP_REQUIREMENTS = new Set([
+  "care-plan-support-plan-meeting",
+  "care-plan-undertaking-adl",
+  "care-plan-mobility-strategy",
+  "care-plan-disaster-management-strategy",
+  "care-plan-behavioural-management",
+  "care-plan-mealtime-management-strategy",
+]);
+
+function recordDroppedStaleModelEvidenceSources(
+  originalSection: ParsedDeliverableSection,
+  derivedSection: ParsedDeliverableSection,
+): ParsedDeliverableSection {
+  if (!SERVER_DERIVED_STALE_SOURCE_DROP_REQUIREMENTS.has(originalSection.requirementId)) return derivedSection;
+  const originalSources = originalSection.evidenceSources ?? [];
+  if (originalSources.length === 0) return derivedSection;
+  const originalKeys = new Set(originalSources.map(carePlanEvidenceSourceKey));
+  const retainedEvidenceSources = (derivedSection.evidenceSources ?? [])
+    .filter((source) => !originalKeys.has(carePlanEvidenceSourceKey(source)));
+  const droppedRecords: ParsedDeliverableSuppressedClaim[] = originalSources.map((source) => ({
+    section: derivedSection.heading,
+    claim: [
+      "dropped-stale evidenceSource",
+      source.documentTitle,
+      source.location,
+      source.chunkId,
+      source.passage,
+    ].filter(Boolean).join(" | ").replace(/\s+/g, " ").trim(),
+    reason: "Model-supplied evidenceSources were replaced by server-derived section facts and are retained only as an approver audit record.",
+    reasonCode: "dropped_stale_evidence_source",
+  }));
+  return {
+    ...derivedSection,
+    evidenceSources: retainedEvidenceSources.length ? retainedEvidenceSources : undefined,
+    suppressedClaims: [...(derivedSection.suppressedClaims ?? []), ...droppedRecords],
+  };
+}
+
+function carePlanEvidenceSourceKey(source: NonNullable<ParsedDeliverableSection["evidenceSources"]>[number]): string {
+  return [
+    source.chunkId,
+    source.documentTitle,
+    source.location,
+    source.passage,
+  ].map((value) => value.trim()).join("\u001f");
 }
 
 function sectionScopedEvidencePackForCarePlanSection(
@@ -6790,13 +6842,9 @@ function deriveAdlCellsFromControlledChecklist(evidencePack: EvidencePack | unde
         byActivity.set(key, {
           ...candidate,
           sourceItems: [...existing.sourceItems, mapping.sourceItem],
-          sourceValue: `${existing.sourceValue}; ${mapping.sourceItem}: ${value}`,
         });
       } else {
         existing.sourceItems.push(mapping.sourceItem);
-        if (!existing.sourceValue.includes(mapping.sourceItem)) {
-          existing.sourceValue = `${existing.sourceValue}; ${mapping.sourceItem}: ${value}`;
-        }
       }
     }
   }
@@ -6845,8 +6893,7 @@ function mapAdlChecklistValueToSupportLevel(value: AdlChecklistValue): string {
 function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell): string {
   if (derived.supportLevel === "Independent") return `Recorded support level: Independent. The retrieved intake checklist records "${derived.sourceValue}" for ${activity.toLowerCase()}.`;
   if (derived.supportLevel === "Unable to complete") return `Michael is recorded as completely unable to complete ${activity.toLowerCase()} in the retrieved intake checklist; workers must provide full support consistent with the current support plan.`;
-  const differingParts = derived.sourceItems.length > 1 ? ` The mapped checklist items were: ${derived.sourceItems.join(", ")}.` : "";
-  return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
+  return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.`;
 }
 
 function systemDerivedGuidance(text: string, basisField: string): CarePlanDerivedGuidance {
