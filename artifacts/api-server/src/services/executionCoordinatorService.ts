@@ -45,7 +45,7 @@ import {
   getActiveCheckpointByConversation,
 } from "./executionCheckpointService.js";
 import type { ActiveCheckpoint } from "./executionCheckpointService.js";
-import { resolveCanonicalBlueprint } from "./workBlueprintService.js";
+import { createBlueprintExecutionSurfaceContext, resolveCanonicalBlueprint } from "./workBlueprintService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import { resolveEvidence, type EvidencePack } from "./knowledgeResolutionService.js";
@@ -144,6 +144,7 @@ export interface DispatchWorkExecutionInput {
   sourceUserRequest?: string;
   requesterId: string;
   conversationId?: string;
+  originConversationId?: string;
   correlationId?: string;
   /**
    * Sprint 29M: execution-lane context from the three-lane classifier.
@@ -230,6 +231,7 @@ async function reconstructFirstDispatchLaneContext(input: {
   taskId?: string;
   taskTitle?: string;
   userRequest?: string;
+  conversationId?: string;
   plan?: TaskPlanLaneSeed | null;
 }): Promise<ExecutionLaneContext | undefined> {
   const task = input.taskId ? await getTaskById(input.taskId, input.organizationId).catch(() => null) : null;
@@ -264,7 +266,12 @@ async function reconstructFirstDispatchLaneContext(input: {
 
   const planIntent = typeof plan?.intent === "string" && plan.intent.trim().length > 0 ? plan.intent.trim() : null;
   const blueprint = planIntent
-    ? (await resolveCanonicalBlueprint(planIntent, input.organizationId).catch(() => null))?.blueprint ?? null
+    ? (await resolveCanonicalBlueprint(planIntent, input.organizationId, {
+      executionSurfaceContext: createBlueprintExecutionSurfaceContext({
+        taskId: input.taskId,
+        originConversationId: input.conversationId ?? null,
+      }),
+    }).catch(() => null))?.blueprint ?? null
     : null;
   const blueprintEvidenceMode = classifyEvidenceMode(blueprint);
   const classification = classifyExecutionRequest({
@@ -520,6 +527,7 @@ export async function coordinateIntentApproval(
     taskId: intent.taskId,
     userRequest,
     conversationId: conversationId ?? undefined,
+    originConversationId: conversationId ?? undefined,
     correlationId,
     intentId,
   });
@@ -539,6 +547,7 @@ export async function dispatchWorkExecution(
   // Ensure a workroom conversation exists for this task so clarification
   // checkpoints have somewhere to write messages and resume from — even when
   // the task was created outside a conversation (e.g. direct POST /tasks).
+  const originConversationId = input.originConversationId ?? input.conversationId;
   let conversationId = input.conversationId;
   if (!conversationId && input.taskId) {
     try {
@@ -674,6 +683,7 @@ export async function dispatchWorkExecution(
     taskTitle: input.taskTitle,
     userRequest: input.sourceUserRequest?.trim() || input.taskTitle,
     conversationId,
+    originConversationId,
     correlationId,
     intentId: undefined,
     laneContext: input.laneContext,  // Sprint 29M: forward classifier lane to UEE
@@ -809,6 +819,7 @@ export async function resumeFromCheckpointById(
     blueprint: checkpoint.payload.blueprint,
     manifest: checkpoint.payload.manifest,
     clarificationAnswer,
+    originConversationId: checkpoint.payload.originConversationId,
   };
   const laneContext = await requireTaskLaneContext({
     organizationId,
@@ -849,6 +860,7 @@ export async function resumeFromCheckpointById(
     taskId: checkpoint.taskId ?? undefined,
     userRequest: checkpoint.payload.originalRequest,
     conversationId,
+    originConversationId: checkpoint.payload.originConversationId,
     correlationId,
     intentId: undefined,
     checkpointData,
@@ -917,6 +929,7 @@ export async function recoverOrphanedExecutions(organizationId: string): Promise
         taskTitle: task?.title ?? undefined,
         userRequest,
         conversationId: conversationId ?? undefined,
+        originConversationId: conversationId ?? undefined,
         correlationId,
         intentId: intent.id,
       });
@@ -941,6 +954,7 @@ async function evaluateParticipantEvidencePreflight(input: {
   taskTitle: string;
   userRequest: string;
   conversationId?: string;
+  originConversationId?: string;
   correlationId: string;
 }): Promise<ParticipantEvidencePreflightResult | null> {
   const subjectParticipantIds = await getRetrievalSubjectParticipantIdsForTask(input.organizationId, input.taskId);
@@ -952,7 +966,12 @@ async function evaluateParticipantEvidencePreflight(input: {
     deriveProfessionalIntentKey(input.userRequest, planIntent) ??
     planIntent ??
     null;
-  const blueprintSelection = await resolveCanonicalBlueprint(canonicalIntent, input.organizationId).catch(() => null);
+  const blueprintSelection = await resolveCanonicalBlueprint(canonicalIntent, input.organizationId, {
+    executionSurfaceContext: createBlueprintExecutionSurfaceContext({
+      taskId: input.taskId,
+      originConversationId: input.conversationId ?? null,
+    }),
+  }).catch(() => null);
   const blueprint = blueprintSelection?.blueprint ?? null;
   if (!blueprint) {
     return {
@@ -1037,6 +1056,7 @@ interface BackgroundRunInput {
   taskTitle?: string;
   userRequest: string;
   conversationId?: string;
+  originConversationId?: string;
   correlationId: string;
   intentId?: string;
   canonicalIntent?: string;
@@ -1178,6 +1198,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       userRequest,
       canonicalIntent,
       conversationId,
+      originConversationId: input.originConversationId,
       correlationId,
       taskId,           // Sprint 29I (D1): forward CoS task ID so engine can read the authoritative plan
       checkpointData: input.checkpointData,
@@ -1218,6 +1239,29 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       return;
     }
 
+    // ── Handle missing evidence ───────────────────────────────────────────────
+    if (result.outcome === "evidence_required") {
+      if (taskId) {
+        await transitionTaskState(taskId, organizationId, "evidence_required");
+      }
+      await logOrgEvent({
+        eventType: "execution_coordinator.pipeline_outcome",
+        organizationId,
+        actorType: "user",
+        actorUserId: requesterId,
+        resourceType: "task",
+        resourceId: taskId ?? "unknown",
+        metadata: {
+          correlationId,
+          outcome: result.outcome,
+          message: result.message,
+          manifestId: result.manifestId,
+          blueprintCode: result.blueprintCode,
+        },
+      }).catch(() => {});
+      return;
+    }
+
     // ── Handle awaiting_clarification ─────────────────────────────────────────
     if (result.outcome === "awaiting_clarification" && result.clarificationQuestions?.length) {
       if (conversationId) {
@@ -1235,6 +1279,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
             blueprint: (result as { blueprint?: WorkBlueprint | null }).blueprint ?? null,
             manifest: (result as { manifest?: WorkPackageManifest }).manifest ?? null,
             laneContext,
+            originConversationId: input.originConversationId,
           },
         }).catch(err =>
           console.warn("[ExecutionCoordinator] Failed to persist checkpoint (in-memory fallback active):", err?.message),

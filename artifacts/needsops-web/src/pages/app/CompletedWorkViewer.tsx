@@ -60,6 +60,7 @@ interface CompletedWorkVersion {
   id:              string;
   versionNumber:   number;
   contentMarkdown: string | null;
+  evidenceGapDeclaration?: { markdown?: string | null } | null;
   qualityScore:    number | null;
   changeNote:      string | null;
   createdByUserId: string | null;
@@ -185,6 +186,20 @@ function DraftAvailabilityBanner({ work }: { work: CompletedWorkItem }) {
       <DraftWorkflowList title="Completion checks" items={failures} />
       <DraftWorkflowList title="Metadata findings" items={metadataFindings} />
       <DraftWorkflowList title="Suppressed unsupported claims" items={suppressedClaims} />
+    </div>
+  );
+}
+
+function evidenceGapDeclarationMarkdown(version: CompletedWorkVersion | undefined): string {
+  const markdown = version?.evidenceGapDeclaration?.markdown;
+  return typeof markdown === "string" ? markdown.trim() : "";
+}
+
+function EvidenceGapDeclarationPanel({ markdown }: { markdown: string }) {
+  if (!markdown) return null;
+  return (
+    <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4">
+      <MarkdownRenderer content={markdown} />
     </div>
   );
 }
@@ -1282,6 +1297,7 @@ export default function CompletedWorkViewer() {
   // normaliseCompletedWorkContent converts it to clean markdown for the viewer and exports.
   // This mirrors the server-side normalisation in completedWorkExportService.ts.
   const currentContent = normaliseCompletedWorkContent(approvedVersion?.contentMarkdown ?? "");
+  const currentEvidenceGapDeclaration = evidenceGapDeclarationMarkdown(approvedVersion);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -1607,8 +1623,13 @@ export default function CompletedWorkViewer() {
                   )}
                   {hasBrokenPin
                     ? null
-                    : currentContent
-                      ? <MarkdownRenderer content={currentContent} />
+                    : currentContent || currentEvidenceGapDeclaration
+                      ? (
+                        <>
+                          {currentContent && <MarkdownRenderer content={currentContent} />}
+                          <EvidenceGapDeclarationPanel markdown={currentEvidenceGapDeclaration} />
+                        </>
+                      )
                       : <div className="flex flex-col items-center justify-center py-20 text-center">
                           <div className="text-4xl mb-4">📄</div>
                           <p className="text-[#E2E8F0] font-medium mb-1">No content yet</p>

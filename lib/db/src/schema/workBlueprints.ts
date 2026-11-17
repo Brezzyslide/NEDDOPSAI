@@ -50,10 +50,9 @@ export const BLUEPRINT_OWNER_TYPES = [
 export type BlueprintOwnerType = (typeof BLUEPRINT_OWNER_TYPES)[number];
 
 export const BLUEPRINT_MISSING_EVIDENCE_BEHAVIOURS = [
-  "clarification_required",
+  "evidence_required",
   "continue_with_flagged_gaps",
   "block_completion",
-  "not_applicable_allowed",
 ] as const;
 export type BlueprintMissingEvidenceBehaviour = (typeof BLUEPRINT_MISSING_EVIDENCE_BEHAVIOURS)[number];
 
@@ -97,6 +96,12 @@ export interface BlueprintEvidenceContract {
     feeds: string[];
   }>;
 }
+
+export const BLUEPRINT_EXECUTION_SURFACES = [
+  "task_only",
+  "conversation_allowed",
+] as const;
+export type BlueprintExecutionSurface = (typeof BLUEPRINT_EXECUTION_SURFACES)[number];
 
 export interface BlueprintPermittedOrgOverrides {
   templateSubstitution?: boolean;
@@ -172,6 +177,24 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
 
   /** Tenant-safe purpose summary */
   purpose: text("purpose"),
+
+  /** Human-facing label used by creation/picker surfaces */
+  outcomeLabel: text("outcome_label"),
+
+  /** Fail-closed: undeclared/legacy blueprints require participant context */
+  requiresParticipant: boolean("requires_participant").notNull().default(true),
+
+  /** Ordered composed blueprint keys */
+  composesWith: jsonb("composes_with")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+
+  /** Fail-closed: default excludes direct conversation execution */
+  executionSurface: text("execution_surface")
+    .$type<BlueprintExecutionSurface>()
+    .notNull()
+    .default("task_only"),
 
   /** Primary deliverable code/name */
   primaryDeliverable: text("primary_deliverable"),

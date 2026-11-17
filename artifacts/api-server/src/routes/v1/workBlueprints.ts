@@ -443,6 +443,7 @@ router.post(
         entityKnowledge: (entityKnowledge as Record<string, unknown>) ?? undefined,
         title: title ? String(title) : undefined,
         conversationId: conversationId ? String(conversationId) : undefined,
+        originConversationId: conversationId ? String(conversationId) : undefined,
       });
 
       const statusCode = result.outcome === "completed" ? 201

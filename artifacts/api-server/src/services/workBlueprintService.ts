@@ -21,8 +21,10 @@ import {
   blueprintSectionsTable,
   workTemplatesTable,
   blueprintIntentMappingsTable,
+  BLUEPRINT_EXECUTION_SURFACES,
   type BlueprintDeliverableContract,
   type BlueprintEvidenceContract,
+  type BlueprintExecutionSurface,
   type BlueprintMaturityState,
   type BlueprintOwnerType,
   type BlueprintPermittedOrgOverrides,
@@ -61,6 +63,10 @@ export interface WorkBlueprint {
   maturityState: BlueprintMaturityState;
   ownerType: BlueprintOwnerType;
   purpose: string | null;
+  outcomeLabel?: string | null;
+  requiresParticipant?: boolean;
+  composesWith?: string[];
+  executionSurface?: BlueprintExecutionSurface;
   primaryDeliverable: string | null;
   deliverableContract: BlueprintDeliverableContract | null;
   evidenceContract: BlueprintEvidenceContract | null;
@@ -161,6 +167,10 @@ export interface BlueprintDescriptor {
   status: BlueprintStatus;
   ownerType: BlueprintOwnerType;
   primaryDeliverable: string | null;
+  outcomeLabel: string | null;
+  requiresParticipant: boolean;
+  composesWith: string[];
+  executionSurface: BlueprintExecutionSurface;
   supportedOutputFormats: string[];
   organisationConfigurableSettings: BlueprintPermittedOrgOverrides;
   templateRequired: boolean;
@@ -210,6 +220,10 @@ export interface CreateBlueprintInput {
   maturityState?: BlueprintMaturityState;
   ownerType?: BlueprintOwnerType;
   purpose?: string;
+  outcomeLabel?: string | null;
+  requiresParticipant?: boolean;
+  composesWith?: string[];
+  executionSurface?: BlueprintExecutionSurface;
   primaryDeliverable?: string;
   deliverableContract?: BlueprintDeliverableContract | null;
   evidenceContract?: BlueprintEvidenceContract | null;
@@ -241,6 +255,10 @@ export interface UpdateBlueprintInput {
   maturityState?: BlueprintMaturityState;
   ownerType?: BlueprintOwnerType;
   purpose?: string | null;
+  outcomeLabel?: string | null;
+  requiresParticipant?: boolean;
+  composesWith?: string[];
+  executionSurface?: BlueprintExecutionSurface;
   primaryDeliverable?: string | null;
   deliverableContract?: BlueprintDeliverableContract | null;
   evidenceContract?: BlueprintEvidenceContract | null;
@@ -273,6 +291,37 @@ export interface BlueprintSelectionResult {
   canonicalIntent?: string;
   blueprintFamily?: string;
   blueprintMode?: string;
+}
+
+export type BlueprintExecutionSurfaceContextKind = "task" | "conversation" | "unknown";
+
+const blueprintExecutionSurfaceContexts = new WeakSet<object>();
+
+export interface BlueprintExecutionSurfaceContext {
+  readonly kind: BlueprintExecutionSurfaceContextKind;
+  readonly taskId: string | null;
+}
+
+export function createBlueprintExecutionSurfaceContext(input: {
+  taskId?: string | null;
+  originConversationId?: string | null;
+} = {}): BlueprintExecutionSurfaceContext {
+  const taskId = typeof input.taskId === "string" && input.taskId.trim().length > 0
+    ? input.taskId.trim()
+    : null;
+  const originConversationId = typeof input.originConversationId === "string" && input.originConversationId.trim().length > 0
+    ? input.originConversationId.trim()
+    : null;
+  const context: BlueprintExecutionSurfaceContext = {
+    kind: originConversationId ? "conversation" : (taskId ? "task" : "unknown"),
+    taskId,
+  };
+  blueprintExecutionSurfaceContexts.add(context);
+  return context;
+}
+
+export interface BlueprintResolutionOptions {
+  executionSurfaceContext?: BlueprintExecutionSurfaceContext;
 }
 
 export interface ListBlueprintsOptions {
@@ -644,6 +693,109 @@ const BLUEPRINT_KEYWORDS: Record<string, string[]> = {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+const VALID_BLUEPRINT_EXECUTION_SURFACES = new Set<string>(BLUEPRINT_EXECUTION_SURFACES);
+
+export class BlueprintExecutionSurfaceError extends Error {
+  constructor(message: string, public readonly blueprintCode: string) {
+    super(message);
+    this.name = "BlueprintExecutionSurfaceError";
+  }
+}
+
+function normaliseExecutionSurface(value: unknown): BlueprintExecutionSurface {
+  return VALID_BLUEPRINT_EXECUTION_SURFACES.has(String(value))
+    ? value as BlueprintExecutionSurface
+    : "task_only";
+}
+
+export function assertBlueprintDeclarationsComplete(blueprint: Pick<
+  WorkBlueprint,
+  "outcomeLabel" | "requiresParticipant" | "composesWith" | "executionSurface" | "code"
+>): void {
+  const claimsCapability = Boolean(blueprint.outcomeLabel?.trim())
+    || blueprint.executionSurface === "conversation_allowed"
+    || Boolean(blueprint.composesWith?.length);
+  if (!claimsCapability) {
+    return;
+  }
+  if (!blueprint.outcomeLabel?.trim()) {
+    throw Object.assign(new Error(`Blueprint ${blueprint.code} cannot be published without outcomeLabel`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+  if (typeof blueprint.requiresParticipant !== "boolean") {
+    throw Object.assign(new Error(`Blueprint ${blueprint.code} cannot be published without requiresParticipant`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+  if (!Array.isArray(blueprint.composesWith)) {
+    throw Object.assign(new Error(`Blueprint ${blueprint.code} cannot be published without composesWith`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+  if (!VALID_BLUEPRINT_EXECUTION_SURFACES.has(blueprint.executionSurface ?? "")) {
+    throw Object.assign(new Error(`Blueprint ${blueprint.code} cannot be published without executionSurface`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+}
+
+export function assertRegistryEntryDeclarationsPublishable(entry: Pick<
+  RegistryEntry,
+  "code" | "outcomeLabel" | "requiresParticipant" | "composesWith" | "executionSurface"
+>): void {
+  const claimsCapability = Boolean(entry.outcomeLabel?.trim())
+    || entry.executionSurface === "conversation_allowed"
+    || Boolean(entry.composesWith?.length);
+  if (!claimsCapability) {
+    return;
+  }
+  if (!entry.outcomeLabel?.trim()) {
+    throw Object.assign(new Error(`Registry blueprint ${entry.code} cannot claim capability without outcomeLabel`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+  if (typeof entry.requiresParticipant !== "boolean") {
+    throw Object.assign(new Error(`Registry blueprint ${entry.code} cannot claim capability without requiresParticipant`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+  if (!Array.isArray(entry.composesWith)) {
+    throw Object.assign(new Error(`Registry blueprint ${entry.code} cannot claim capability without composesWith`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+  if (!VALID_BLUEPRINT_EXECUTION_SURFACES.has(entry.executionSurface ?? "")) {
+    throw Object.assign(new Error(`Registry blueprint ${entry.code} cannot claim capability without executionSurface`), {
+      code: "BLUEPRINT_DECLARATION_REQUIRED",
+    });
+  }
+}
+
+function assertBlueprintConversationExecutable(blueprint: WorkBlueprint): void {
+  if (blueprint.executionSurface !== "conversation_allowed") {
+    throw new BlueprintExecutionSurfaceError(
+      `Blueprint ${blueprint.code} is task-only and cannot execute directly from conversation`,
+      blueprint.code,
+    );
+  }
+}
+
+function enforceBlueprintExecutionContext(
+  blueprint: WorkBlueprint | null,
+  executionSurfaceContext: BlueprintExecutionSurfaceContext | undefined,
+): WorkBlueprint | null {
+  if (executionSurfaceContext && !blueprintExecutionSurfaceContexts.has(executionSurfaceContext)) {
+    throw Object.assign(new Error("Blueprint execution surface context must be created by createBlueprintExecutionSurfaceContext"), {
+      code: "INVALID_BLUEPRINT_EXECUTION_SURFACE_CONTEXT",
+    });
+  }
+  if (blueprint && executionSurfaceContext?.kind !== "task") {
+    assertBlueprintConversationExecutable(blueprint);
+  }
+  return blueprint;
+}
+
 function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
   return {
     id: row.id,
@@ -657,6 +809,10 @@ function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
     maturityState: row.maturityState ?? "placeholder",
     ownerType: row.ownerType ?? (row.organizationId ? "organisation_owned" : "platform_owned"),
     purpose: row.purpose ?? null,
+    outcomeLabel: row.outcomeLabel ?? null,
+    requiresParticipant: row.requiresParticipant ?? true,
+    composesWith: (row.composesWith as string[]) ?? [],
+    executionSurface: normaliseExecutionSurface(row.executionSurface),
     primaryDeliverable: row.primaryDeliverable ?? null,
     deliverableContract: (row.deliverableContract as BlueprintDeliverableContract | null) ?? null,
     evidenceContract: (row.evidenceContract as BlueprintEvidenceContract | null) ?? null,
@@ -757,6 +913,10 @@ function blueprintToSnapshot(bp: WorkBlueprint): Record<string, unknown> {
     maturityState: bp.maturityState,
     ownerType: bp.ownerType,
     purpose: bp.purpose,
+    outcomeLabel: bp.outcomeLabel ?? null,
+    requiresParticipant: bp.requiresParticipant ?? true,
+    composesWith: bp.composesWith ?? [],
+    executionSurface: bp.executionSurface ?? "task_only",
     primaryDeliverable: bp.primaryDeliverable,
     deliverableContract: bp.deliverableContract,
     evidenceContract: bp.evidenceContract,
@@ -792,6 +952,10 @@ export function toBlueprintDescriptor(bp: WorkBlueprint): BlueprintDescriptor {
     title: bp.title,
     family: bp.blueprintFamily,
     purpose: bp.purpose,
+    outcomeLabel: bp.outcomeLabel ?? null,
+    requiresParticipant: bp.requiresParticipant ?? true,
+    composesWith: bp.composesWith ?? [],
+    executionSurface: bp.executionSurface ?? "task_only",
     supportedModes: bp.supportedModes,
     version: bp.version,
     maturity: bp.maturityState,
@@ -869,7 +1033,7 @@ export function reportBlueprintContentHashDrift(
       computedHash,
     });
   }
-  return { storedHash: blueprint.contentHash, computedHash, drifted };
+  return { storedHash: blueprint.contentHash ?? null, computedHash, drifted };
 }
 
 export async function getBlueprintSpecification(
@@ -1001,6 +1165,7 @@ async function findBlueprintByCode(
 export async function resolveCanonicalBlueprint(
   canonicalIntent: string | undefined | null,
   organizationId: string,
+  options: BlueprintResolutionOptions = {},
 ): Promise<BlueprintSelectionResult | null> {
   const parsed = parseCanonicalIntent(canonicalIntent);
   if (!parsed) return null;
@@ -1065,7 +1230,7 @@ export async function resolveCanonicalBlueprint(
   }
 
   return {
-    blueprint,
+    blueprint: enforceBlueprintExecutionContext(blueprint, options.executionSurfaceContext),
     confidence: 1,
     matchedKeywords: [],
     fallbackUsed: false,
@@ -1093,8 +1258,9 @@ export async function resolveCanonicalBlueprint(
 export async function selectBlueprint(
   userRequest: string,
   organizationId: string,
+  options: BlueprintResolutionOptions = {},
 ): Promise<BlueprintSelectionResult> {
-  const canonical = await resolveCanonicalBlueprint(userRequest, organizationId);
+  const canonical = await resolveCanonicalBlueprint(userRequest, organizationId, options);
   if (canonical?.blueprint) return canonical;
 
   const lower = userRequest.toLowerCase();
@@ -1111,7 +1277,7 @@ export async function selectBlueprint(
 
   if (!top) {
     // No keyword match — attempt semantic LLM classification before giving up
-    return classifyBlueprintWithLLM(userRequest, organizationId);
+    return classifyBlueprintWithLLM(userRequest, organizationId, options);
   }
 
   const [code, { score, keywords: matched }] = top;
@@ -1122,7 +1288,7 @@ export async function selectBlueprint(
 
   const confidence = Math.min(1.0, score / 3);
   return {
-    blueprint,
+    blueprint: enforceBlueprintExecutionContext(blueprint, options.executionSurfaceContext),
     confidence,
     matchedKeywords: matched,
     fallbackUsed: false,
@@ -1146,6 +1312,7 @@ export async function selectBlueprint(
 export async function classifyBlueprintWithLLM(
   userRequest: string,
   organizationId: string,
+  options: BlueprintResolutionOptions = {},
 ): Promise<BlueprintSelectionResult> {
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
   if (provider !== "openai") {
@@ -1264,7 +1431,10 @@ Return blueprintCode as null if the request is casual conversation, a general qu
       return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
     }
 
-    const blueprint = mapRow(full);
+    const blueprint = enforceBlueprintExecutionContext(mapRow(full), options.executionSurfaceContext);
+    if (!blueprint) {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
     return {
       blueprint,
       confidence:      Math.min(1.0, parsed.confidence),
@@ -1298,6 +1468,15 @@ export async function getBlueprintById(
   return mapRow(row);
 }
 
+export async function resolveBlueprintByIdForExecution(
+  id: string,
+  organizationId: string,
+  options: BlueprintResolutionOptions = {},
+): Promise<WorkBlueprint | null> {
+  const blueprint = await getBlueprintById(id, organizationId);
+  return enforceBlueprintExecutionContext(blueprint, options.executionSurfaceContext);
+}
+
 /**
  * List blueprints available to an organisation (built-ins + org custom).
  * Sprint 28: supports search, status filter, specialist filter, sort.
@@ -1324,6 +1503,7 @@ export async function listBlueprints(
     );
 
   let results = rows.map(mapRow);
+  results = results.filter(b => Boolean(b.outcomeLabel?.trim()));
 
   // Client-side filters (small dataset, avoids complex SQL)
   if (search) {
@@ -1380,6 +1560,10 @@ export async function createCustomBlueprint(
     maturityState: input.maturityState ?? "placeholder",
     ownerType: "organisation_owned",
     purpose: input.purpose ?? input.objective,
+    outcomeLabel: input.outcomeLabel ?? null,
+    requiresParticipant: input.requiresParticipant ?? true,
+    composesWith: input.composesWith ?? [],
+    executionSurface: input.executionSurface ?? "task_only",
     primaryDeliverable: input.primaryDeliverable ?? input.outputTypes?.[0] ?? null,
     deliverableContract: input.deliverableContract ?? null,
     evidenceContract: input.evidenceContract ?? null,
@@ -1452,6 +1636,10 @@ export async function updateCustomBlueprint(
   if (input.maturityState !== undefined) updates.maturityState = input.maturityState;
   if (input.ownerType !== undefined) updates.ownerType = input.ownerType;
   if (input.purpose !== undefined) updates.purpose = input.purpose;
+  if (input.outcomeLabel !== undefined) updates.outcomeLabel = input.outcomeLabel;
+  if (input.requiresParticipant !== undefined) updates.requiresParticipant = input.requiresParticipant;
+  if (input.composesWith !== undefined) updates.composesWith = input.composesWith;
+  if (input.executionSurface !== undefined) updates.executionSurface = input.executionSurface;
   if (input.primaryDeliverable !== undefined) updates.primaryDeliverable = input.primaryDeliverable;
   if (input.deliverableContract !== undefined) updates.deliverableContract = input.deliverableContract;
   if (input.evidenceContract !== undefined) updates.evidenceContract = input.evidenceContract;
@@ -1585,6 +1773,10 @@ export async function cloneBlueprint(
     maturityState: "placeholder",
     ownerType: "organisation_owned",
     purpose: source.purpose,
+    outcomeLabel: source.outcomeLabel ?? null,
+    requiresParticipant: source.requiresParticipant ?? true,
+    composesWith: source.composesWith ?? [],
+    executionSurface: source.executionSurface ?? "task_only",
     primaryDeliverable: source.primaryDeliverable,
     deliverableContract: source.deliverableContract,
     evidenceContract: source.evidenceContract,
@@ -1680,9 +1872,11 @@ export async function publishBlueprint(
   if (existing.status !== "draft" && existing.status !== "review") {
     throw Object.assign(new Error("Only draft or review blueprints can be published"), { statusCode: 409 });
   }
+  assertBlueprintDeclarationsComplete(existing);
   const sections = await getBlueprintSections(id);
+  const publishedBlueprint = { ...existing, status: "published" as const };
   const contentHash = computeBlueprintContentHash({
-    blueprint: { ...existing, status: "published" },
+    blueprint: publishedBlueprint,
     sections,
   });
 
@@ -1787,6 +1981,10 @@ export async function rollbackToVersion(
     maturityState:           (snap.maturityState as BlueprintMaturityState) ?? "placeholder",
     ownerType:               "organisation_owned",
     purpose:                 (snap.purpose as string | null) ?? null,
+    outcomeLabel:            (snap.outcomeLabel as string | null) ?? null,
+    requiresParticipant:     typeof snap.requiresParticipant === "boolean" ? snap.requiresParticipant : true,
+    composesWith:            (snap.composesWith as string[]) ?? [],
+    executionSurface:        normaliseExecutionSurface(snap.executionSurface),
     primaryDeliverable:      (snap.primaryDeliverable as string | null) ?? null,
     deliverableContract:     (snap.deliverableContract as BlueprintDeliverableContract | null) ?? null,
     evidenceContract:        (snap.evidenceContract as BlueprintEvidenceContract | null) ?? null,
@@ -1973,6 +2171,10 @@ export async function seedBuiltInBlueprints(): Promise<void> {
           maturityState: "placeholder",
           ownerType: "platform_owned",
           purpose: def.purpose ?? def.objective,
+          outcomeLabel: def.outcomeLabel ?? null,
+          requiresParticipant: def.requiresParticipant ?? true,
+          composesWith: def.composesWith ?? [],
+          executionSurface: def.executionSurface ?? "task_only",
           primaryDeliverable: def.primaryDeliverable ?? def.outputTypes?.[0] ?? null,
           permittedOrgOverrides: def.permittedOrgOverrides ?? {},
           updatedAt: new Date(),
@@ -1993,6 +2195,10 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       maturityState: def.maturityState ?? "placeholder",
       ownerType: "platform_owned",
       purpose: def.purpose ?? def.objective,
+      outcomeLabel: def.outcomeLabel ?? null,
+      requiresParticipant: def.requiresParticipant ?? true,
+      composesWith: def.composesWith ?? [],
+      executionSurface: def.executionSurface ?? "task_only",
       primaryDeliverable: def.primaryDeliverable ?? def.outputTypes?.[0] ?? null,
       deliverableContract: def.deliverableContract ?? null,
       evidenceContract: def.evidenceContract ?? null,
@@ -2067,6 +2273,10 @@ export async function seedRegistryBlueprints(): Promise<void> {
           maturityState: entry.maturityState,
           ownerType: "platform_owned",
           purpose: entry.purpose,
+          outcomeLabel: entry.outcomeLabel ?? null,
+          requiresParticipant: entry.requiresParticipant ?? true,
+          composesWith: entry.composesWith ?? [],
+          executionSurface: entry.executionSurface ?? "task_only",
           primaryDeliverable: entry.primaryDeliverable,
           permittedOrgOverrides: {},
           ...(shouldApplyRegistryContract ? registryContractSeedValues(entry, registryOwner) : {}),
@@ -2090,6 +2300,10 @@ export async function seedRegistryBlueprints(): Promise<void> {
       maturityState: entry.maturityState,
       ownerType: "platform_owned",
       purpose: entry.purpose,
+      outcomeLabel: entry.outcomeLabel ?? null,
+      requiresParticipant: entry.requiresParticipant ?? true,
+      composesWith: entry.composesWith ?? [],
+      executionSurface: entry.executionSurface ?? "task_only",
       primaryDeliverable: entry.primaryDeliverable,
       deliverableContract: entry.deliverableContract ?? null,
       evidenceContract: entry.evidenceContract ?? null,
@@ -2186,7 +2400,7 @@ export async function seedRegistryBlueprintSections(
       notInArray(blueprintSectionsTable.id, expectedSectionIds),
     ));
 
-  for (const section of entry.sections) {
+  for (const section of entry.sections ?? []) {
     const sectionId = `platform_blueprint_${entry.code}_section_${section.sectionCode.toLowerCase()}`;
     const existing = await db
       .select({ id: blueprintSectionsTable.id })
@@ -2366,7 +2580,7 @@ function registrySectionId(code: string, sectionCode: string): string {
   return `platform_blueprint_${code}_section_${sectionCode.toLowerCase()}`;
 }
 
-function sectionToWritableValues(section: RegistryEntry["sections"][number], blueprintId: string, now: Date) {
+function sectionToWritableValues(section: NonNullable<RegistryEntry["sections"]>[number], blueprintId: string, now: Date) {
   return {
     blueprintId,
     sectionCode: section.sectionCode,
@@ -2484,6 +2698,10 @@ function blueprintRestoreValues(blueprint: WorkBlueprint, contentHash: string, u
     maturityState: blueprint.maturityState,
     ownerType: blueprint.ownerType,
     purpose: blueprint.purpose,
+    outcomeLabel: blueprint.outcomeLabel ?? null,
+    requiresParticipant: blueprint.requiresParticipant ?? true,
+    composesWith: blueprint.composesWith ?? [],
+    executionSurface: blueprint.executionSurface ?? "task_only",
     primaryDeliverable: blueprint.primaryDeliverable,
     deliverableContract: blueprint.deliverableContract,
     evidenceContract: blueprint.evidenceContract,
@@ -2529,6 +2747,10 @@ function normaliseRestoreBlueprint(input: WorkBlueprint): WorkBlueprint {
     blueprintFamily: input.blueprintFamily ?? null,
     supportedModes: input.supportedModes ?? [],
     purpose: input.purpose ?? null,
+    outcomeLabel: input.outcomeLabel ?? null,
+    requiresParticipant: input.requiresParticipant ?? true,
+    composesWith: input.composesWith ?? [],
+    executionSurface: normaliseExecutionSurface(input.executionSurface),
     primaryDeliverable: input.primaryDeliverable ?? null,
     deliverableContract: input.deliverableContract ?? null,
     evidenceContract: input.evidenceContract ?? null,
@@ -2588,6 +2810,10 @@ function maybeRawBlueprint(input: unknown): WorkBlueprint | null {
     maturityState: (raw.maturity_state as BlueprintMaturityState | null) ?? "placeholder",
     ownerType: (raw.owner_type as BlueprintOwnerType | null) ?? (raw.organization_id ? "organisation_owned" : "platform_owned"),
     purpose: raw.purpose === null || raw.purpose === undefined ? null : String(raw.purpose),
+    outcomeLabel: raw.outcome_label === null || raw.outcome_label === undefined ? null : String(raw.outcome_label),
+    requiresParticipant: raw.requires_participant === undefined ? true : Boolean(raw.requires_participant),
+    composesWith: Array.isArray(raw.composes_with) ? raw.composes_with as string[] : [],
+    executionSurface: normaliseExecutionSurface(raw.execution_surface),
     primaryDeliverable: raw.primary_deliverable === null || raw.primary_deliverable === undefined ? null : String(raw.primary_deliverable),
     deliverableContract: (raw.deliverable_contract as BlueprintDeliverableContract | null) ?? null,
     evidenceContract: (raw.evidence_contract as BlueprintEvidenceContract | null) ?? null,
@@ -2797,9 +3023,6 @@ export function buildScopedRegistryBlueprintPublishPlan(input: {
 }
 
 function blueprintTargetValues(entry: RegistryEntry, current: WorkBlueprint, now: Date): Partial<WorkBlueprint> {
-  const registryOwner = getRegistryBlueprintSeedOwner(entry);
-  const isRegistryPlaceholderRow = current.objective.startsWith("[PLACEHOLDER]");
-  const shouldApplyRegistryContract = isRegistryPlaceholderRow || entry.maturityState === "production_ready";
   return {
     title: entry.title,
     blueprintFamily: entry.blueprintFamily,
@@ -2807,9 +3030,11 @@ function blueprintTargetValues(entry: RegistryEntry, current: WorkBlueprint, now
     maturityState: entry.maturityState,
     ownerType: "platform_owned",
     purpose: entry.purpose,
+    outcomeLabel: entry.outcomeLabel ?? null,
+    requiresParticipant: entry.requiresParticipant ?? true,
+    composesWith: entry.composesWith ?? [],
+    executionSurface: entry.executionSurface ?? "task_only",
     primaryDeliverable: entry.primaryDeliverable,
-    permittedOrgOverrides: {},
-    ...(shouldApplyRegistryContract ? registryContractSeedValues(entry, registryOwner) : {}),
     updatedAt: now,
   };
 }
@@ -2862,6 +3087,10 @@ function blueprintDiffFields(blueprint: WorkBlueprint): Record<string, unknown> 
     maturityState: blueprint.maturityState,
     ownerType: blueprint.ownerType,
     purpose: blueprint.purpose,
+    outcomeLabel: blueprint.outcomeLabel ?? null,
+    requiresParticipant: blueprint.requiresParticipant ?? true,
+    composesWith: blueprint.composesWith ?? [],
+    executionSurface: blueprint.executionSurface ?? "task_only",
     primaryDeliverable: blueprint.primaryDeliverable,
     deliverableContract: blueprint.deliverableContract,
     evidenceContract: blueprint.evidenceContract,
@@ -2966,7 +3195,9 @@ export async function publishScopedRegistryBlueprint(
 
   const currentBlueprint = mapRow(row);
   const currentSections = await getBlueprintSections(currentBlueprint.id);
+  assertRegistryEntryDeclarationsPublishable(entry);
   const plan = buildScopedRegistryBlueprintPublishPlan({ currentBlueprint, currentSections, entry, now });
+  assertBlueprintDeclarationsComplete(plan.nextBlueprint);
 
   if (dryRun) {
     return {
@@ -3248,6 +3479,10 @@ async function seedSyntheticCarePlanVerticalSlice(): Promise<void> {
       maturityState: "placeholder",
       ownerType: "platform_owned",
       purpose: "Synthetic Care Plan architecture proof only. Not professional content.",
+      outcomeLabel: "Synthetic Care Plan Architecture Proof",
+      requiresParticipant: true,
+      composesWith: [],
+      executionSurface: "task_only",
       primaryDeliverable: "care_plan",
       deliverableContract: {
         primaryDeliverable: "care_plan",

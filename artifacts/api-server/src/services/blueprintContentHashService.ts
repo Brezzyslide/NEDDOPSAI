@@ -14,6 +14,10 @@ export interface BlueprintContentHashInput {
     | "maturityState"
     | "ownerType"
     | "purpose"
+    | "outcomeLabel"
+    | "requiresParticipant"
+    | "composesWith"
+    | "executionSurface"
     | "primaryDeliverable"
     | "deliverableContract"
     | "evidenceContract"
@@ -59,6 +63,9 @@ export interface BlueprintContentHashInput {
 }
 
 export function computeBlueprintContentHash(input: BlueprintContentHashInput): string {
+  const claimsDeclaredCapability = Boolean(input.blueprint.outcomeLabel?.trim())
+    || input.blueprint.executionSurface === "conversation_allowed"
+    || Boolean(input.blueprint.composesWith?.length);
   const canonical = canonicalJson({
     algorithm: BLUEPRINT_CONTENT_HASH_ALGORITHM,
     blueprint: {
@@ -70,6 +77,12 @@ export function computeBlueprintContentHash(input: BlueprintContentHashInput): s
       maturityState: input.blueprint.maturityState,
       ownerType: input.blueprint.ownerType,
       purpose: input.blueprint.purpose,
+      ...(claimsDeclaredCapability ? {
+        outcomeLabel: input.blueprint.outcomeLabel ?? null,
+        requiresParticipant: input.blueprint.requiresParticipant ?? true,
+        composesWith: input.blueprint.composesWith ?? [],
+        executionSurface: input.blueprint.executionSurface ?? "task_only",
+      } : {}),
       primaryDeliverable: input.blueprint.primaryDeliverable,
       deliverableContract: input.blueprint.deliverableContract,
       evidenceContract: input.blueprint.evidenceContract,

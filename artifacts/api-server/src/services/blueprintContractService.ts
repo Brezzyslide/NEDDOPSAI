@@ -64,10 +64,9 @@ export interface DeliverableContract {
 
 /** Behaviour when required evidence is absent */
 export type MissingEvidenceBehaviour =
-  | "clarification_required"
+  | "evidence_required"
   | "continue_with_flagged_gaps"
-  | "block_completion"
-  | "not_applicable_allowed";
+  | "block_completion";
 
 /** Structured evidence contract stored in work_blueprints.evidence_contract */
 export interface EvidenceContract {
@@ -125,6 +124,7 @@ export interface ContractEnforcementResult {
   outcome:
     | "passed"
     | "block_completion"
+    | "evidence_required"
     | "awaiting_clarification"
     | "continue_with_flagged_gaps"
     | "template_missing";
@@ -154,7 +154,8 @@ export function enforceEvidenceContract(
       type: "MISSING_REQUIRED_EVIDENCE",
       code: "MINIMUM_EVIDENCE_COUNT_NOT_MET",
       message: `Evidence contract requires at least ${contract.minimumEvidenceCount} evidence chunk(s); ${chunks.length} retrieved.`,
-      blocking: contract.missingEvidenceBehaviour === "block_completion",
+      blocking: contract.missingEvidenceBehaviour === "block_completion" ||
+        contract.missingEvidenceBehaviour === "evidence_required",
     });
   }
 
@@ -178,7 +179,8 @@ export function enforceEvidenceContract(
         type: "MISSING_REQUIRED_EVIDENCE",
         code: `REQUIRED_ENTITY_TYPE_ABSENT:${entityType}`,
         message: `Required entity context "${entityType}" was not found in evidence.`,
-        blocking: contract.missingEvidenceBehaviour === "block_completion",
+        blocking: contract.missingEvidenceBehaviour === "block_completion" ||
+          contract.missingEvidenceBehaviour === "evidence_required",
       });
     }
   }
@@ -193,7 +195,7 @@ export function enforceEvidenceContract(
     violations,
     missingEvidenceBehaviour: behaviour,
     outcome: hasBlocking
-      ? (behaviour === "clarification_required" ? "awaiting_clarification" : "block_completion")
+      ? (behaviour === "evidence_required" ? "evidence_required" : "block_completion")
       : "continue_with_flagged_gaps",
   };
 }
@@ -475,6 +477,9 @@ export function parseEvidenceContract(
   raw: Record<string, unknown> | null | undefined,
 ): EvidenceContract | null {
   if (!raw || typeof raw !== "object") return null;
+  const missingEvidenceBehaviour = raw.missingEvidenceBehaviour === "clarification_required"
+    ? "evidence_required"
+    : (raw.missingEvidenceBehaviour as MissingEvidenceBehaviour | undefined) ?? "continue_with_flagged_gaps";
   return {
     requiredEvidenceCategories: Array.isArray(raw.requiredEvidenceCategories) ? raw.requiredEvidenceCategories as string[] : [],
     optionalEvidenceCategories: Array.isArray(raw.optionalEvidenceCategories) ? raw.optionalEvidenceCategories as string[] : [],
@@ -484,6 +489,6 @@ export function parseEvidenceContract(
     minimumEvidenceCount: Number(raw.minimumEvidenceCount ?? 0),
     freshnessRules: Array.isArray(raw.freshnessRules) ? raw.freshnessRules as EvidenceContract["freshnessRules"] : [],
     claimIntegrityRequired: Boolean(raw.claimIntegrityRequired),
-    missingEvidenceBehaviour: (raw.missingEvidenceBehaviour as MissingEvidenceBehaviour) ?? "continue_with_flagged_gaps",
+    missingEvidenceBehaviour,
   };
 }

@@ -33,6 +33,14 @@ export const completedWorkVersionsTable = pgTable("completed_work_versions", {
   /** Full markdown content of the work output */
   contentMarkdown: text("content_markdown"),
 
+  /**
+   * Server-derived evidence-gap declaration associated with this exact version.
+   * This is intentionally stored outside content_markdown so validation and
+   * coverage scans never read it as model-authored deliverable content.
+   */
+  evidenceGapDeclaration: jsonb("evidence_gap_declaration")
+    .$type<Record<string, unknown> | null>(),
+
   /** Weighted overall quality score 0–100 */
   qualityScore: integer("quality_score"),
 

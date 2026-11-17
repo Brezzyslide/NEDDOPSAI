@@ -22,6 +22,7 @@ import {
   executionSessionsTable,
   executionEventsTable,
   withSystemTenantContext,
+  type Task,
 } from "@workspace/db";
 import type {
   BlueprintExecutionContractSnapshot,
@@ -55,8 +56,9 @@ import {
 import { loadSpecialistContext } from "./specialistContextService.js";
 import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 import {
-  getBlueprintById,
+  createBlueprintExecutionSurfaceContext,
   getBlueprintExecutionContract,
+  resolveBlueprintByIdForExecution,
   type BlueprintExecutionContract,
 } from "./workBlueprintService.js";
 import { getRegistryEntry, resolveRegistryCodeForNewWork, resolveRegistryProfessionalOwner } from "./blueprintRegistry.js";
@@ -496,10 +498,15 @@ function buildBlueprintSnapshotFromRegistryCode(
 async function resolveBlueprintContractSnapshot(
   planData: Record<string, unknown>,
   organizationId: string,
+  task: Task,
 ): Promise<BlueprintExecutionContractSnapshot | null> {
   const blueprintId = getPlanBlueprintId(planData);
   if (blueprintId) {
-    const blueprint = await getBlueprintById(blueprintId, organizationId);
+    const taskCreation = (task.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
+    const originConversationId = typeof taskCreation?.conversationId === "string" ? taskCreation.conversationId : null;
+    const blueprint = await resolveBlueprintByIdForExecution(blueprintId, organizationId, {
+      executionSurfaceContext: createBlueprintExecutionSurfaceContext({ taskId: task.id, originConversationId }),
+    });
     if (!blueprint) {
       throw Object.assign(new Error(`Blueprint "${blueprintId}" could not be resolved for execution`), {
         code: "BLUEPRINT_CONTRACT_UNRESOLVED",
@@ -688,6 +695,7 @@ async function buildExecutionPackage(
   const blueprintContract = await resolveBlueprintContractSnapshot(
     planData as Record<string, unknown>,
     task.organizationId,
+    task,
   );
   const workerProfileConstraints = buildWorkerProfileExecutionConstraints(profile);
   workerProfileConstraints.prohibitedActions = unique([
@@ -1018,7 +1026,8 @@ async function startAwsNativeExecution(input: {
       }
 
       const requiresClarification = result.outcome === "awaiting_clarification";
-      const terminalStatus = requiresClarification ? "awaiting_clarification" : "failed";
+      const requiresEvidence = result.outcome === "evidence_required";
+      const terminalStatus = requiresEvidence ? "evidence_required" : requiresClarification ? "awaiting_clarification" : "failed";
       if (terminalStatus === "failed") {
         await reconcileTaskExecutionFailure({
           taskId: input.task.id,
@@ -1027,6 +1036,29 @@ async function startAwsNativeExecution(input: {
           correlationId: input.pkg.executionId,
           failureMetadata: result.failureMetadata,
         });
+      } else if (requiresEvidence) {
+        await withExecutionTenant(input.task.organizationId, "task.execution_evidence_required.record", async (client) => client
+          .update(tasksTable)
+          .set({
+            currentState: "evidence_required",
+            metadata: {
+              ...((input.task.metadata as Record<string, unknown> | null) ?? {}),
+              executionEvidenceRequired: {
+                requiredAt: new Date().toISOString(),
+                correlationId: input.pkg.executionId,
+                runtimeSelection: "aws_native_professional_work",
+                outcome: result.outcome,
+                message: result.message,
+                workPackageManifestId: result.manifestId,
+                blueprintCode: result.blueprintCode,
+              },
+            },
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(tasksTable.id, input.task.id),
+            eq(tasksTable.organizationId, input.task.organizationId),
+          )));
       } else {
         await withExecutionTenant(input.task.organizationId, "task.execution_clarification.record", async (client) => client
           .update(tasksTable)
@@ -1054,9 +1086,9 @@ async function startAwsNativeExecution(input: {
       await withExecutionTenant(input.task.organizationId, "execution_session.aws_native.terminal", async (client) => client
         .update(executionSessionsTable)
         .set({
-          currentStatus: terminalStatus,
+            currentStatus: terminalStatus,
           completedAt: new Date(),
-          errorMessage: terminalStatus === "failed" ? result.message : null,
+            errorMessage: terminalStatus === "failed" ? result.message : null,
           updatedAt: new Date(),
           metadata: {
             runtimeSelection: "aws_native_professional_work",
@@ -1073,7 +1105,9 @@ async function startAwsNativeExecution(input: {
       await persistExecutionEvent({
         executionSessionId: input.pkg.executionId,
         organizationId: input.task.organizationId,
-        eventType: terminalStatus === "failed" ? "execution.failed" : "execution.awaiting_clarification",
+        eventType: terminalStatus === "failed"
+          ? "execution.failed"
+          : terminalStatus === "evidence_required" ? "execution.evidence_required" : "execution.awaiting_clarification",
         eventSource: "aws_native",
         payload: { outcome: result.outcome, message: result.message, manifestId: result.manifestId },
       });

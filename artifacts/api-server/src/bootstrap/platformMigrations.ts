@@ -282,6 +282,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Makes notification_reads app-role grants explicit and guards against unintentional RLS-policy-without-runtime-grant tables.",
   },
+  {
+    id: "0067-completed-work-version-gap-declaration",
+    file: "0067_completed_work_version_gap_declaration.sql",
+    transactional: true,
+    notes: "Stores server-derived evidence-gap declarations outside completed_work_versions.content_markdown.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {

@@ -40,6 +40,7 @@ export interface CheckpointPayload {
   blueprint: WorkBlueprint | null;
   manifest: WorkPackageManifest;
   laneContext?: ExecutionLaneContext;
+  originConversationId?: string;
 }
 
 export interface CreateCheckpointInput {

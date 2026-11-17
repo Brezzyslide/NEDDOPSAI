@@ -60,6 +60,7 @@ export interface CreateDraftInput {
   title: string;
   outputType: string;
   contentMarkdown: string;
+  evidenceGapDeclaration?: Record<string, unknown> | null;
   reviewResult?: ReviewResult;
   createdByUserId: string;
   approvalWorkflow?: Record<string, unknown>;
@@ -119,6 +120,7 @@ export interface CompletedWorkVersion {
   organizationId: string;
   versionNumber: number;
   contentMarkdown: string | null;
+  evidenceGapDeclaration: Record<string, unknown> | null;
   qualityScore: number | null;
   reviewDimensions: unknown[];
   changeNote: string | null;
@@ -192,6 +194,7 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
         organizationId: input.organizationId,
         versionNumber: 1,
         contentMarkdown: input.contentMarkdown,
+        evidenceGapDeclaration: input.evidenceGapDeclaration ?? null,
         qualityScore: input.reviewResult?.qualityScore ?? null,
         reviewDimensions: input.reviewResult?.dimensions ?? [],
         changeNote: "Initial draft",
@@ -417,6 +420,7 @@ export async function getVersions(
     organizationId: r.organizationId,
     versionNumber: r.versionNumber,
     contentMarkdown: r.contentMarkdown ?? null,
+    evidenceGapDeclaration: (r.evidenceGapDeclaration as Record<string, unknown> | null) ?? null,
     qualityScore: r.qualityScore ?? null,
     reviewDimensions: (r.reviewDimensions as unknown[]) ?? [],
     changeNote: r.changeNote ?? null,
@@ -684,6 +688,7 @@ export async function addVersion(
       organizationId,
       versionNumber: nextVersion,
       contentMarkdown,
+      evidenceGapDeclaration: null,
       qualityScore: reviewResult?.qualityScore ?? null,
       reviewDimensions: reviewResult?.dimensions ?? [],
       changeNote,
@@ -717,6 +722,7 @@ export async function addVersion(
     organizationId,
     versionNumber: nextVersion,
     contentMarkdown,
+    evidenceGapDeclaration: null,
     qualityScore: reviewResult?.qualityScore ?? null,
     reviewDimensions: reviewResult?.dimensions ?? [],
     changeNote,

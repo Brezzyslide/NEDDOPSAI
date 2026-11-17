@@ -1,4 +1,6 @@
 {
+  "fixtureKind": "synthetic_prestate_for_scoped_publisher_tests_not_live_snapshot",
+  "fixtureNote": "This fixture is intentionally static test input. Do not treat it as the current live care_plan blueprint.",
   "blueprint": {
     "allowed_org_template_override": true,
     "blueprint_family": "care_plan",

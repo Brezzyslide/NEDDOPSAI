@@ -24,8 +24,15 @@
  *   20. Long content does not truncate in viewer/export
  */
 
+import { execFileSync } from "child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseMarkdown, PdfExporter, DocxExporter, CompletedWorkExportService } from "../services/completedWorkExportService.js";
+import {
+  buildDeterministicEvidenceGapDeclaration,
+} from "../services/evidenceGapDeclarationService.js";
 
 // ─── Mock DB ──────────────────────────────────────────────────────────────────
 
@@ -61,6 +68,17 @@ const ORG_ID   = "org-a-uuid";
 const OTHER_ORG = "org-b-uuid";
 const WORK_ID  = "work-uuid-001";
 const USER_ID  = "user-uuid-001";
+
+function docxDocumentXml(buffer: Buffer): string {
+  const dir = mkdtempSync(join(tmpdir(), "needsops-docx-export-"));
+  const path = join(dir, "document.docx");
+  try {
+    writeFileSync(path, buffer);
+    return execFileSync("unzip", ["-p", path, "word/document.xml"], { encoding: "utf8" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 const APPROVED_WORK = {
   id:                WORK_ID,
@@ -285,6 +303,137 @@ describe("Sprint 29J — Export MIME types and content", () => {
     });
     expect(result.filename).toMatch(/\.docx$/);
     expect(result.filename).toMatch(/-v\d+\.docx$/);
+  });
+
+  it("14b. Server-derived evidence gap declaration renders in PDF and DOCX exports", async () => {
+    const declaration = buildDeterministicEvidenceGapDeclaration({
+      contract: {
+        blueprint: {
+          evidenceContract: {
+            requiredEvidenceCategories: ["behaviour_support_plan"],
+          },
+        },
+        sections: [{
+          sectionCode: "BEHAVIOURAL_MANAGEMENT",
+          title: "Behavioural Management",
+          sortOrder: 1,
+          evidenceRequirements: {
+            requiredEvidenceCategories: ["behaviour_support_plan"],
+          },
+        }],
+        template: null,
+        mode: "create",
+      } as any,
+      evidencePack: { chunks: [], totalChunks: 0 } as any,
+    });
+    expect(declaration?.markdown).toContain("No behaviour support plan was found");
+    expect(declaration?.markdown).toContain("Behavioural Management section");
+
+    const contentMarkdown = "# Complaints Management Policy Review\n\nThis report provides recommendations.";
+    expect(contentMarkdown).not.toContain("Evidence gaps declared by NeedsOps");
+    vi.mocked(getCompletedWork).mockResolvedValue(APPROVED_WORK as any);
+    vi.mocked(getVersions).mockResolvedValue([{
+      ...APPROVED_VERSION,
+      contentMarkdown,
+      evidenceGapDeclaration: declaration,
+    }] as any);
+
+    const exportSvc = new CompletedWorkExportService();
+    const pdfResult = await exportSvc.export({
+      workId: WORK_ID,
+      organisationId: ORG_ID,
+      organisationName: "Test Org",
+      format: "pdf",
+      actorUserId: USER_ID,
+    });
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(pdfResult.buffer) });
+    const parsed = await parser.getText();
+    await parser.destroy();
+    expect(parsed.text).toContain("Evidence gaps declared by NeedsOps");
+    expect(parsed.text).toContain("No behaviour support plan was found");
+
+    const docxResult = await exportSvc.export({
+      workId: WORK_ID,
+      organisationId: ORG_ID,
+      organisationName: "Test Org",
+      format: "docx",
+      actorUserId: USER_ID,
+    });
+    const xml = docxDocumentXml(docxResult.buffer);
+    expect(xml).toContain("Evidence gaps declared by NeedsOps");
+    expect(xml).toContain("No behaviour support plan was found");
+
+    const viewerSource = readFileSync(
+      new URL("../../../needsops-web/src/pages/app/CompletedWorkViewer.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(viewerSource).toContain("evidenceGapDeclaration");
+    expect(viewerSource).toContain("EvidenceGapDeclarationPanel");
+    expect(viewerSource).toContain("<MarkdownRenderer content={currentContent} />");
+    expect(viewerSource).toContain("<EvidenceGapDeclarationPanel markdown={currentEvidenceGapDeclaration} />");
+  });
+
+  it("14c. Server-derived evidence gap declaration does not infer categories from catch-all participant documents", () => {
+    const declaration = buildDeterministicEvidenceGapDeclaration({
+      contract: {
+        blueprint: {
+          evidenceContract: {
+            requiredEvidenceCategories: ["behaviour_support_plan"],
+          },
+        },
+        sections: [{
+          sectionCode: "BEHAVIOURAL_MANAGEMENT",
+          title: "Behavioural Management",
+          sortOrder: 1,
+          evidenceRequirements: {
+            requiredEvidenceCategories: ["behaviour_support_plan"],
+          },
+        }],
+        template: null,
+        mode: "create",
+      } as any,
+      evidencePack: {
+        chunks: [{
+          chunkId: "chunk-bsp-catch-all",
+          sourceId: "src-1",
+          sourceVersionId: "ver-1",
+          sourceTitle: "Michael Rocca Comprehensive Behaviour Support Plan",
+          versionLabel: null,
+          sourceType: "library",
+          documentCategory: "other_participant_document",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+          authorityLevel: "primary",
+          sectionTitle: null,
+          pageNumber: null,
+          text: "Behaviour support strategies...",
+          confidence: 1,
+          citation: "Behaviour Support Plan",
+          selectionReason: "test",
+        }],
+        totalChunks: 1,
+      } as any,
+      deliverableSections: [{
+        requirementId: "care-plan-behavioural-management",
+        heading: "Behavioural Management",
+        content: "Behaviour support strategies are included from the cited plan.",
+        evidenceSources: [{
+          chunkId: "chunk-bsp-catch-all",
+          documentTitle: "Michael Rocca Comprehensive Behaviour Support Plan",
+          passage: "Behaviour support strategies",
+          location: "p. 1",
+        }],
+      }],
+    });
+
+    expect(declaration).not.toBeNull();
+    expect(declaration?.markdown).toContain("No behaviour support plan was found in the retrieved organisation library or task evidence.");
+    expect(declaration?.markdown).toContain("Uncategorised participant document cited as evidence: Michael Rocca Comprehensive Behaviour Support Plan.");
+    expect(declaration?.markdown).toContain("Review and recategorise this document if it is the required document.");
+    expect(declaration?.missingCategories[0]).toMatchObject({
+      category: "behaviour_support_plan",
+      uncategorisedParticipantDocumentsCited: ["Michael Rocca Comprehensive Behaviour Support Plan"],
+    });
   });
 });
 

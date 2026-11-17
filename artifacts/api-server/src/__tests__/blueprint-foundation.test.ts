@@ -67,6 +67,8 @@ const makeBlueprintRow = (overrides: Record<string, unknown> = {}) => ({
   supported_modes: ["create", "review", "revise"],
   maturityState: "placeholder",
   maturity_state: "placeholder",
+  executionSurface: "conversation_allowed",
+  execution_surface: "conversation_allowed",
   ownerType: "platform_owned",
   owner_type: "platform_owned",
   purpose: "Architecture test",
@@ -133,6 +135,7 @@ vi.mock("@workspace/db", () => {
     },
     workTemplatesTable: { id: "id", code: "code" },
     blueprintVersionsTable: { id: "id" },
+    BLUEPRINT_EXECUTION_SURFACES: ["task_only", "conversation_allowed"],
     blueprintIntentMappingsTable: {
       id: "id",
       canonicalIntent: "canonical_intent",
@@ -347,21 +350,19 @@ describe("5: Evidence contract enforcement", () => {
     expect(result.violations.some(v => v.code === "RESTRICTED_SOURCE_TYPE_PRESENT")).toBe(true);
   });
 
-  it("5c. clarification_required behaviour: missingEvidenceBehaviour is propagated to the caller", () => {
+  it("5c. evidence_required behaviour: missingEvidenceBehaviour routes to evidence required", () => {
     const contract: EvidenceContract = {
       ...EVIDENCE_CONTRACT,
       minimumEvidenceCount: 5,
-      missingEvidenceBehaviour: "clarification_required",
+      missingEvidenceBehaviour: "evidence_required",
     };
     const evidencePack = { chunks: [{ sourceType: "library" }] };
 
     const result = enforceEvidenceContract(contract, evidencePack);
 
     expect(result.passed).toBe(false);
-    // The missingEvidenceBehaviour is propagated to the caller so it can route to
-    // awaiting_clarification. The enforcement service itself returns the configured
-    // behaviour — the UEE maps it to the final outcome.
-    expect(result.missingEvidenceBehaviour).toBe("clarification_required");
+    expect(result.missingEvidenceBehaviour).toBe("evidence_required");
+    expect(result.outcome).toBe("evidence_required");
     expect(result.violations).toContainEqual(
       expect.objectContaining({ type: "MISSING_REQUIRED_EVIDENCE" }),
     );

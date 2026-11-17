@@ -63,6 +63,7 @@ export interface IntermediateDocument {
   approvalStatus: string;
   version:        number;
   nodes:          DocumentNode[];
+  evidenceGapDeclarationMarkdown?: string | null;
   carePlanMetadata?: CarePlanDocumentMetadata;
   draftNotice?: DraftNoticeMetadata | null;
 }
@@ -86,6 +87,12 @@ function exportDraftNoticeMetadata(work: Awaited<ReturnType<typeof getCompletedW
     blocked: true,
     message: "This document is an unapproved draft. Completion checks did not pass, so it must not be actioned as a final care plan or given to workers as a current support document.",
   };
+}
+
+function evidenceGapDeclarationMarkdownFromVersion(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const markdown = (value as { markdown?: unknown }).markdown;
+  return typeof markdown === "string" && markdown.trim() ? markdown : null;
 }
 
 // ─── Markdown parser ──────────────────────────────────────────────────────────
@@ -702,6 +709,7 @@ export class MarkdownExporter {
       `---`,
       ``,
       originalMarkdown,
+      ...(doc.evidenceGapDeclarationMarkdown ? [``, doc.evidenceGapDeclarationMarkdown] : []),
     ].join("\n");
     return {
       buffer: Buffer.from(header, "utf-8"),
@@ -1539,7 +1547,11 @@ export class CompletedWorkExportService {
     // Normalise content format before parsing — converts JSON/fenced-JSON to
     // human-readable markdown so exporters never see raw braces or property names.
     const normalised = normaliseCompletedWorkContent(clientArtifactMarkdown);
-    const nodes      = parseMarkdown(normalised);
+    const contentNodes = parseMarkdown(normalised);
+    const evidenceGapDeclarationMarkdown = evidenceGapDeclarationMarkdownFromVersion(resolvedVersion.evidenceGapDeclaration);
+    const nodes = evidenceGapDeclarationMarkdown
+      ? [...contentNodes, ...parseMarkdown(evidenceGapDeclarationMarkdown)]
+      : contentNodes;
     const carePlanMetadata = ["pdf", "docx"].includes(format)
       ? await buildStructuredCarePlanMetadata({
           workId,
@@ -1547,9 +1559,9 @@ export class CompletedWorkExportService {
           taskId,
           title: work.title,
           generatedDate,
-          nodes,
+          nodes: contentNodes,
         })
-      : buildCarePlanMetadata({ title: work.title, generatedDate, nodes });
+      : buildCarePlanMetadata({ title: work.title, generatedDate, nodes: contentNodes });
 
     const intermediateDoc: IntermediateDocument = {
       title:          work.title,
@@ -1559,6 +1571,7 @@ export class CompletedWorkExportService {
       approvalStatus: formatApprovalStatus(work.status),
       version:        resolvedVersion.versionNumber,
       nodes,
+      evidenceGapDeclarationMarkdown,
       carePlanMetadata,
       draftNotice: exportDraftNoticeMetadata(work),
     };

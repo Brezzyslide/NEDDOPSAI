@@ -3,6 +3,7 @@ import { resolve } from "path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "../../../..");
+const CARE_PLAN_PRESTATE_HASH = "sha256:b825528b9a95744f2bf265108e9aec998e7c3b76bbf4d3bb3522ef3af97dadd2";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf8");
@@ -34,6 +35,10 @@ function comparableBlueprint(blueprint: {
   ownerType: string;
   purpose: string | null;
   primaryDeliverable: string | null;
+  outcomeLabel?: string | null;
+  requiresParticipant?: boolean;
+  composesWith?: string[];
+  executionSurface?: string;
   deliverableContract: unknown;
   evidenceContract: unknown;
   permittedOrgOverrides: unknown;
@@ -73,6 +78,10 @@ function comparableBlueprint(blueprint: {
     ownerType: blueprint.ownerType,
     purpose: blueprint.purpose,
     primaryDeliverable: blueprint.primaryDeliverable,
+    outcomeLabel: blueprint.outcomeLabel ?? null,
+    requiresParticipant: blueprint.requiresParticipant ?? true,
+    composesWith: blueprint.composesWith ?? [],
+    executionSurface: blueprint.executionSurface ?? "task_only",
     deliverableContract: blueprint.deliverableContract,
     evidenceContract: blueprint.evidenceContract,
     permittedOrgOverrides: blueprint.permittedOrgOverrides,
@@ -171,14 +180,59 @@ describe("scoped registry blueprint publisher", () => {
   it("dry-run returns the diff before any write path executes", () => {
     const publisher = scopedPublisherSource();
     const dryRunIndex = publisher.indexOf("if (dryRun)");
+    const declarationGuardIndex = publisher.indexOf("assertBlueprintDeclarationsComplete(plan.nextBlueprint)");
     const firstBlueprintUpdate = publisher.indexOf(".update(workBlueprintsTable)");
     const firstSectionDelete = publisher.indexOf("await db\n      .delete(blueprintSectionsTable)");
 
     expect(dryRunIndex).toBeGreaterThanOrEqual(0);
+    expect(declarationGuardIndex).toBeGreaterThanOrEqual(0);
+    expect(declarationGuardIndex).toBeLessThan(dryRunIndex);
     expect(firstBlueprintUpdate).toBeGreaterThan(dryRunIndex);
     expect(firstSectionDelete).toBeGreaterThan(dryRunIndex);
     expect(publisher.slice(dryRunIndex, firstBlueprintUpdate)).toContain("wrote: false");
     expect(publisher.slice(dryRunIndex, firstBlueprintUpdate)).toContain("diff");
+  });
+
+  it("refuses a publish attempt when required blueprint declarations are absent", async () => {
+    process.env.DATABASE_URL ??= "postgres://unit:test@localhost:5432/unit";
+    const {
+      assertBlueprintDeclarationsComplete,
+      assertRegistryEntryDeclarationsPublishable,
+    } = await import("../services/workBlueprintService.js");
+
+    expect(() => assertBlueprintDeclarationsComplete({
+      code: "undeclared_blueprint",
+      outcomeLabel: null,
+      requiresParticipant: true,
+      composesWith: [],
+      executionSurface: "task_only",
+    })).not.toThrow();
+
+    expect(() => assertBlueprintDeclarationsComplete({
+      code: "missing_declaration_blueprint",
+      outcomeLabel: "Missing Declaration Blueprint",
+      requiresParticipant: undefined as unknown as boolean,
+      composesWith: [],
+      executionSurface: "task_only",
+    })).toThrow(/cannot be published without requiresParticipant/i);
+
+    expect(() => assertRegistryEntryDeclarationsPublishable({
+      code: "registry_claims_capability_without_full_declaration",
+      outcomeLabel: "Claimed Capability",
+      composesWith: [],
+      executionSurface: "task_only",
+    })).toThrow(/cannot claim capability without requiresParticipant/i);
+  });
+
+  it("derives unknown execution surface when no origin context is present", async () => {
+    process.env.DATABASE_URL ??= "postgres://unit:test@localhost:5432/unit";
+    const { createBlueprintExecutionSurfaceContext } = await import("../services/workBlueprintService.js");
+    const service = source("artifacts/api-server/src/services/workBlueprintService.ts");
+
+    expect(createBlueprintExecutionSurfaceContext().kind).toBe("unknown");
+    expect(createBlueprintExecutionSurfaceContext({ taskId: "task-1" }).kind).toBe("task");
+    expect(createBlueprintExecutionSurfaceContext({ taskId: "task-1", originConversationId: "conversation-1" }).kind).toBe("conversation");
+    expect(service).toContain('executionSurfaceContext?.kind !== "task"');
   });
 
   it("has an isolated CLI entry point that does not import db-bootstrap", () => {
@@ -198,7 +252,7 @@ describe("scoped registry blueprint publisher", () => {
 
   it("round-trips care_plan publish and verified rollback artifact without touching other registry entries", async () => {
     process.env.DATABASE_URL ??= "postgres://unit:test@localhost:5432/unit";
-    const artifactPath = resolve(ROOT, "artifacts/api-server/src/__fixtures__/blueprints/care_plan-live-prestate-2026-10-29.json");
+    const artifactPath = resolve(ROOT, "artifacts/api-server/src/__fixtures__/blueprints/care_plan-synthetic-prestate-2026-10-29.json");
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
     const {
       buildScopedBlueprintRestorePlan,
@@ -208,7 +262,7 @@ describe("scoped registry blueprint publisher", () => {
     const { BLUEPRINT_REGISTRY, getRegistryEntry } = await import("../services/blueprintRegistry.js");
 
     const verifiedPreState = readVerifiedScopedBlueprintRestoreArtifact(artifact);
-    expect(verifiedPreState.computedHash).toBe("sha256:b825528b9a95744f2bf265108e9aec998e7c3b76bbf4d3bb3522ef3af97dadd2");
+    expect(verifiedPreState.computedHash).toBe(CARE_PLAN_PRESTATE_HASH);
     expect(verifiedPreState.sections).toHaveLength(14);
 
     const entry = getRegistryEntry("care_plan");
@@ -219,8 +273,8 @@ describe("scoped registry blueprint publisher", () => {
       entry: entry!,
       now: new Date("2026-10-28T00:00:00.000Z"),
     });
-    expect(publishPlan.nextContentHash).toBe("sha256:f3d4021683e9c0b158647379acaa898c1d642af2b7e606655ed93936f35c0aae");
-    expect(Object.keys(publishPlan.diff.blueprint).sort()).toEqual(["contentHash", "deliverableContract", "evidenceContract"]);
+    expect(publishPlan.nextContentHash).toBe("sha256:2cac230a11adb84865ffd40b754c80707d23e175012f2870206fca3629f2c0dc");
+    expect(Object.keys(publishPlan.diff.blueprint).sort()).toEqual(["contentHash", "outcomeLabel"]);
     expect(publishPlan.diff.sections.filter((section) => section.action === "update").map((section) => section.sectionCode).sort()).toEqual([
       "ABOUT_ME",
       "CLIENT_ENDORSEMENT",
@@ -239,7 +293,7 @@ describe("scoped registry blueprint publisher", () => {
       now: new Date("2026-10-28T00:05:00.000Z"),
     });
 
-    expect(restorePlan.nextContentHash).toBe("sha256:b825528b9a95744f2bf265108e9aec998e7c3b76bbf4d3bb3522ef3af97dadd2");
+    expect(restorePlan.nextContentHash).toBe(CARE_PLAN_PRESTATE_HASH);
     expect(restorePlan.blueprintId).toBe(verifiedPreState.blueprint.id);
     expect(restorePlan.nextSections).toHaveLength(14);
     expect(comparableBlueprint(restorePlan.nextBlueprint)).toEqual(comparableBlueprint(verifiedPreState.blueprint));
@@ -254,11 +308,27 @@ describe("scoped registry blueprint publisher", () => {
     expect(registryCodes.size).toBe(75);
     expect(restorePlan.code).toBe("care_plan");
     expect([...registryCodes].filter((code) => code !== restorePlan.code)).toHaveLength(74);
+
+    const fromFileArtifact = {
+      computedHash: publishPlan.nextContentHash,
+      blueprint: publishPlan.nextBlueprint,
+      sections: publishPlan.nextSections,
+    };
+    const verifiedFromFile = readVerifiedScopedBlueprintRestoreArtifact(fromFileArtifact);
+    const fromFileRestorePlan = buildScopedBlueprintRestorePlan({
+      currentBlueprint: verifiedFromFile.blueprint,
+      currentSections: verifiedFromFile.sections,
+      artifact: fromFileArtifact,
+      code: "care_plan",
+      now: new Date("2026-10-28T00:10:00.000Z"),
+    });
+    expect(fromFileRestorePlan.diff.blueprint).toEqual({});
+    expect(fromFileRestorePlan.diff.sections.every((section) => section.action === "unchanged")).toBe(true);
   });
 
   it("fails closed for corrupted restore artifacts and wrong blueprint names", async () => {
     process.env.DATABASE_URL ??= "postgres://unit:test@localhost:5432/unit";
-    const artifactPath = resolve(ROOT, "artifacts/api-server/src/__fixtures__/blueprints/care_plan-live-prestate-2026-10-29.json");
+    const artifactPath = resolve(ROOT, "artifacts/api-server/src/__fixtures__/blueprints/care_plan-synthetic-prestate-2026-10-29.json");
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
     const {
       buildScopedBlueprintRestorePlan,

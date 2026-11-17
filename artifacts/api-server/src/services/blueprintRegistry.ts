@@ -16,6 +16,10 @@
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+import type {
+  BlueprintExecutionSurface,
+} from "@workspace/db";
+
 export type BlueprintMaturityState =
   | "placeholder"
   | "draft"
@@ -98,6 +102,14 @@ export interface RegistryEntry {
   legacyCode?: string;
   /** Professional ownership boundary for placeholder routing and admin review. */
   professionalAuthority?: "needsops_ai" | "external_or_credentialed" | "mixed";
+  /** Human-facing outcome label for creation/picker surfaces. */
+  outcomeLabel?: string;
+  /** Whether execution requires a participant binding. Defaults fail-closed true. */
+  requiresParticipant?: boolean;
+  /** Ordered blueprint keys composed with this blueprint. */
+  composesWith?: string[];
+  /** Whether the blueprint may execute directly from conversation. Defaults fail-closed task_only. */
+  executionSurface?: BlueprintExecutionSurface;
   /** Work that must remain with an external or appropriately credentialed authority. */
   externalAuthorityRequiredFor?: string[];
   /** Future NeedsOps role intended to own this work once professionally authored. */
@@ -137,7 +149,7 @@ export interface RegistryEntry {
     minimumEvidenceCount?: number;
     freshnessRules?: Record<string, unknown>;
     claimIntegrityRequired?: boolean;
-    missingEvidenceBehaviour?: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" | "not_applicable_allowed";
+    missingEvidenceBehaviour?: "evidence_required" | "continue_with_flagged_gaps" | "block_completion";
     documentToSections?: Array<{ documentType: string; requiredWhen: string; feeds: string[] }>;
   };
   permittedOrgOverrides?: {
@@ -273,7 +285,7 @@ function participantEvidence(
   requiredEvidenceCategories: string[],
   optionalEvidenceCategories: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -308,7 +320,7 @@ function fundingUtilisationEvidence(
   requiredEvidenceCategories: string[],
   optionalEvidenceCategories: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -358,7 +370,7 @@ function governanceEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -395,7 +407,7 @@ function complaintReviewEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -491,7 +503,7 @@ function stakeholderCorrespondenceEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -586,7 +598,7 @@ function serviceAgreementReviewEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -668,7 +680,7 @@ function policyEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -755,7 +767,7 @@ function governanceFrameworkEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 3,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -829,7 +841,7 @@ function governanceGapEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -910,7 +922,7 @@ function delegationFrameworkEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -984,7 +996,7 @@ function complianceAuditReadinessEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1078,7 +1090,7 @@ function legislationRegulatoryReviewEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1158,7 +1170,7 @@ function regulatoryChangeImpactEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1241,7 +1253,7 @@ function regulatorResponseEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1324,7 +1336,7 @@ function schadsAwardEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1396,7 +1408,7 @@ function employmentComplianceEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1475,7 +1487,7 @@ function workforceEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1519,7 +1531,7 @@ function operationsEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1564,7 +1576,7 @@ function operationalReadinessEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1626,7 +1638,7 @@ function sopEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 3,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1688,7 +1700,7 @@ function processAnalysisEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 3,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "clarification_required",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "evidence_required",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1749,7 +1761,7 @@ function assetLifecycleEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = ["asset"],
   minimumEvidenceCount = 3,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1808,7 +1820,7 @@ function documentControlEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 3,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1873,7 +1885,7 @@ function knowledgeBaseEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -1944,7 +1956,7 @@ function controlledAssemblyEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2010,7 +2022,7 @@ function businessContinuityEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2068,7 +2080,7 @@ function participantSiteEvidence(
   requiredEvidenceCategories: string[],
   optionalEvidenceCategories: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2117,7 +2129,7 @@ function financeEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2161,7 +2173,7 @@ function businessGrowthEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 6,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2254,7 +2266,7 @@ function businessProposalEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 6,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2353,7 +2365,7 @@ function businessFinancialAnalysisEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2428,7 +2440,7 @@ function financialPlanningReportingEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2523,7 +2535,7 @@ function taxFinancialObligationEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 4,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2616,7 +2628,7 @@ function operationalFinanceReconciliationEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2715,7 +2727,7 @@ function marketingEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 2,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "clarification_required",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "evidence_required",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2788,7 +2800,7 @@ function ndisMarketingStrategyEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -2854,7 +2866,7 @@ function ndisMarketAnalysisEvidence(
   optionalEvidenceCategories: string[] = [],
   requiredEntityTypes: string[] = [],
   minimumEvidenceCount = 5,
-  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ) {
   return {
     requiredEvidenceCategories,
@@ -4832,6 +4844,10 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["create", "review", "revise"],
     primaryDeliverable: "Care Plan document",
+    outcomeLabel: "Care Plan",
+    requiresParticipant: true,
+    composesWith: [],
+    executionSurface: "task_only",
     maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
@@ -4910,7 +4926,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
         documentToSectionsContract: true,
       },
       claimIntegrityRequired: true,
-      missingEvidenceBehaviour: "block_completion",
+      missingEvidenceBehaviour: "continue_with_flagged_gaps",
     },
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
@@ -5241,7 +5257,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "transport_record",
       "behaviour_support_plan",
       "support_coordination_correspondence",
-    ], 4, "block_completion"),
+    ], 4, "continue_with_flagged_gaps"),
     sections: FUNDING_UTILISATION_SECTIONS,
     requiredLibraryKnowledge: [
       "service_agreement",
@@ -5571,7 +5587,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["participant_context", "risk_context", "inspection_record", "operational_record"],
       ["behaviour_support_plan", "restrictive_practice_record", "maintenance_record", "hazard_register", "evacuation_drill", "training_record", "controlled_document"],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: SITE_ENVIRONMENTAL_RISK_SECTIONS,
     requiredLibraryKnowledge: ["risk_management_policy", "site_safety_procedure"],
@@ -5601,7 +5617,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["participant_context", "risk_context", "fire_equipment_record"],
       ["behaviour_support_plan", "restrictive_practice_record", "evacuation_drill", "maintenance_record", "hazard_register", "inspection_record", "operational_record"],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: FIRE_RISK_ASSESSMENT_SECTIONS,
     requiredLibraryKnowledge: ["fire_safety_procedure", "emergency_management_plan", "risk_management_policy"],
@@ -5685,7 +5701,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["participant_context", "risk_context", "controlled_document", "operational_record"],
       ["behaviour_support_plan", "restrictive_practice_record", "medication_record", "roster_schedule", "maintenance_record", "evacuation_drill", "asset_register"],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: DISASTER_EMERGENCY_PLAN_SECTIONS,
     requiredLibraryKnowledge: ["emergency_management_plan", "business_continuity_plan", "risk_management_policy"],
@@ -5773,7 +5789,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: DISASTER_BCP_SECTIONS,
     requiredLibraryKnowledge: ["business_continuity_plan", "emergency_management_plan", "delegation_framework", "risk_management_policy", "organisation_structure"],
@@ -5874,7 +5890,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["behaviour_support_plan", "behaviour_implementation_evidence", "participant_context"],
       ["fba", "incident_record", "case_note", "weekly_summary", "health_record", "medication_record", "restrictive_practice_record", "training_record"],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
     requiredEntityKnowledge: { participant: true },
@@ -5940,7 +5956,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["restrictive_practice_record", "behaviour_support_plan", "incident_record", "risk_context"],
       ["fba", "case_note", "behaviour_data", "abc_record", "weekly_summary", "participant_risk_assessment", "health_record", "rp_usage_record", "previous_rp_assessment", "staff_observation", "consultation_record", "authorisation_record", "implementation_record", "alternative_strategy_evidence", "training_record"],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -5969,7 +5985,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "authorised_program_officer",
     supportingSpecialists: ["behaviour_support_implementation_specialist", "service_delivery_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("least_restrictive_alternatives_analysis", ["rp_usage_pattern_review", "options_comparison_matrix"], ["restrictive_practice_risk_assessment", "restrictive_practice_authorisation", "behaviour_support_plan"]),
-    evidenceContract: participantEvidence(["restrictive_practice_record", "behaviour_support_plan", "risk_context", "alternative_strategy_evidence"], ["functional_behaviour_assessment", "restrictive_practice_risk_assessment", "participant_risk_assessment", "incident_record", "case_note", "abc_record", "behaviour_data", "weekly_summary", "health_record", "rp_usage_record", "authorisation_record", "participant_view", "consultation_record", "practitioner_recommendation", "staff_observation", "implementation_record", "training_record"], 4, "block_completion"),
+    evidenceContract: participantEvidence(["restrictive_practice_record", "behaviour_support_plan", "risk_context", "alternative_strategy_evidence"], ["functional_behaviour_assessment", "restrictive_practice_risk_assessment", "participant_risk_assessment", "incident_record", "case_note", "abc_record", "behaviour_data", "weekly_summary", "health_record", "rp_usage_record", "authorisation_record", "participant_view", "consultation_record", "practitioner_recommendation", "staff_observation", "implementation_record", "training_record"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
     requiredEntityKnowledge: { participant: true },
     requiredApprovals: { authorised_program_owner: true },
@@ -6023,7 +6039,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "incident_safeguarding_specialist",
     supportingSpecialists: ["authorised_program_officer", "behaviour_support_implementation_specialist", "compliance_quality_manager", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("unauthorised_restrictive_practice_review", "UNAUTHORISED_RP_REVIEW_{participant}_{date}", ["safeguarding_context_review", "event_time_bsp_reconciliation", "event_time_authorisation_reconciliation", "corrective_preventive_action_review"], ["formal_reportability_determination", "external_regulatory_submission", "formal_authorisation", "behaviour_support_plan", "functional_behaviour_assessment", "legal_determination", "disciplinary_finding"]),
-    evidenceContract: participantEvidence(["incident_record", "restrictive_practice_record", "behaviour_support_plan", "authorisation_record"], ["case_note", "hourly_observation", "shift_record", "roster_schedule", "participant_account", "witness_account", "staff_statement", "historical_bsp", "functional_behaviour_assessment", "participant_risk_assessment", "restrictive_practice_risk_assessment", "least_restrictive_alternatives_analysis", "rp_register", "rp_usage_record", "monthly_reporting_record", "medication_record", "training_record", "competency_record", "provider_record", "internal_correspondence", "guardian_nominee_correspondence", "practitioner_correspondence", "apo_record", "medical_record", "cctv_record", "external_reporting_evidence", "previous_incident_record", "previous_unauthorised_rp_concern", "corrective_action_record"], 4, "block_completion"),
+    evidenceContract: participantEvidence(["incident_record", "restrictive_practice_record", "behaviour_support_plan", "authorisation_record"], ["case_note", "hourly_observation", "shift_record", "roster_schedule", "participant_account", "witness_account", "staff_statement", "historical_bsp", "functional_behaviour_assessment", "participant_risk_assessment", "restrictive_practice_risk_assessment", "least_restrictive_alternatives_analysis", "rp_register", "rp_usage_record", "monthly_reporting_record", "medication_record", "training_record", "competency_record", "provider_record", "internal_correspondence", "guardian_nominee_correspondence", "practitioner_correspondence", "apo_record", "medical_record", "cctv_record", "external_reporting_evidence", "previous_incident_record", "previous_unauthorised_rp_concern", "corrective_action_record"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6065,7 +6081,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "incident_safeguarding_specialist",
     supportingSpecialists: ["compliance_quality_manager", "service_delivery_coordinator", "authorised_program_officer", "behaviour_support_implementation_specialist", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("participant_incident_investigation_report", "INCIDENT_INVESTIGATION_{participant}_{incident}_{date}", ["chronology_review", "contradiction_register", "issue_by_issue_analysis", "capa_recommendation"], ["legal_finding", "disciplinary_finding", "clinical_determination", "final_reportability_determination", "external_regulatory_submission"]),
-    evidenceContract: governanceEvidence(["incident_record", "incident_policy", "participant_record"], ["participant_account", "staff_statement", "witness_statement", "case_note", "hourly_observation", "shift_record", "roster_schedule", "medication_record", "restrictive_practice_record", "behaviour_support_plan", "care_plan", "risk_assessment", "authorisation_record", "training_record", "competency_record", "email_record", "message_record", "telephone_record", "cctv_record", "photograph_record", "medical_record", "ambulance_paramedic_record", "police_record", "system_log", "gps_time_record", "previous_incident_record", "safeguarding_record", "service_agreement", "procedure_manual", "capa_record"], ["incident", "participant"], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["incident_record", "incident_policy", "participant_record"], ["participant_account", "staff_statement", "witness_statement", "case_note", "hourly_observation", "shift_record", "roster_schedule", "medication_record", "restrictive_practice_record", "behaviour_support_plan", "care_plan", "risk_assessment", "authorisation_record", "training_record", "competency_record", "email_record", "message_record", "telephone_record", "cctv_record", "photograph_record", "medical_record", "ambulance_paramedic_record", "police_record", "system_log", "gps_time_record", "previous_incident_record", "safeguarding_record", "service_agreement", "procedure_manual", "capa_record"], ["incident", "participant"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6106,7 +6122,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "incident_safeguarding_specialist",
     supportingSpecialists: ["service_delivery_coordinator", "compliance_quality_manager", "behaviour_support_implementation_specialist", "authorised_program_officer", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("participant_incident_review_improvement_report", "INCIDENT_REVIEW_IMPROVEMENT_{participant}_{incident}_{date}", ["response_adequacy_review", "pattern_recurrence_review", "risk_reassessment", "improvement_action_review"], ["incident_investigation_report", "reportable_incident_assessment", "safeguarding_assessment", "standalone_capa_deliverable", "incident_closure", "regulatory_submission", "clinical_determination", "legal_determination"]),
-    evidenceContract: governanceEvidence(["incident_record", "participant_record"], ["completed_incident_investigation", "case_note", "hourly_observation", "participant_account", "staff_statement", "witness_statement", "care_plan", "behaviour_support_plan", "participant_risk_assessment", "restrictive_practice_record", "medication_record", "previous_incident_record", "weekly_summary", "shift_record", "roster_schedule", "training_record", "competency_record", "immediate_response_record", "medical_record", "ambulance_paramedic_record", "police_record", "corrective_action_record", "previous_incident_review", "risk_register", "continuous_improvement_register", "complaint_record", "incident_policy", "procedure_manual", "communication_record", "implementation_evidence"], ["incident", "participant"], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["incident_record", "participant_record"], ["completed_incident_investigation", "case_note", "hourly_observation", "participant_account", "staff_statement", "witness_statement", "care_plan", "behaviour_support_plan", "participant_risk_assessment", "restrictive_practice_record", "medication_record", "previous_incident_record", "weekly_summary", "shift_record", "roster_schedule", "training_record", "competency_record", "immediate_response_record", "medical_record", "ambulance_paramedic_record", "police_record", "corrective_action_record", "previous_incident_review", "risk_register", "continuous_improvement_register", "complaint_record", "incident_policy", "procedure_manual", "communication_record", "implementation_evidence"], ["incident", "participant"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6147,7 +6163,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "incident_safeguarding_specialist",
     supportingSpecialists: ["compliance_quality_manager", "service_delivery_coordinator", "authorised_program_officer", "behaviour_support_implementation_specialist", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("reportable_incident_assessment_submission_readiness_report", "REPORTABLE_INCIDENT_ASSESSMENT_{participant}_{incident}_{date}", ["threshold_mapping", "deadline_calculation", "submission_readiness_review"], ["final_reportability_determination", "external_regulatory_submission", "regulator_communication", "legal_advice", "incident_investigation_report", "safeguarding_assessment"]),
-    evidenceContract: governanceEvidence(["incident_record", "participant_record", "current_reportability_authority"], ["incident_investigation", "incident_review_improvement", "participant_account", "case_note", "hourly_observation", "staff_statement", "witness_statement", "care_plan", "behaviour_support_plan", "participant_risk_assessment", "restrictive_practice_record", "authorisation_record", "medication_record", "roster_schedule", "shift_record", "medical_record", "ambulance_paramedic_record", "police_record", "photograph_record", "cctv_record", "communication_record", "system_record", "safeguarding_record", "previous_incident_record", "regulator_correspondence", "submission_record", "incident_policy"], ["incident", "participant"], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["incident_record", "participant_record", "current_reportability_authority"], ["incident_investigation", "incident_review_improvement", "participant_account", "case_note", "hourly_observation", "staff_statement", "witness_statement", "care_plan", "behaviour_support_plan", "participant_risk_assessment", "restrictive_practice_record", "authorisation_record", "medication_record", "roster_schedule", "shift_record", "medical_record", "ambulance_paramedic_record", "police_record", "photograph_record", "cctv_record", "communication_record", "system_record", "safeguarding_record", "previous_incident_record", "regulator_correspondence", "submission_record", "incident_policy"], ["incident", "participant"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6188,7 +6204,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "incident_safeguarding_specialist",
     supportingSpecialists: ["service_delivery_coordinator", "compliance_quality_manager", "behaviour_support_implementation_specialist", "authorised_program_officer", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("participant_safeguarding_assessment_protection_plan", "SAFEGUARDING_ASSESSMENT_{participant}_{date}", ["protective_action_review", "least_restrictive_safeguarding_review", "referral_escalation_review", "monitoring_plan"], ["legal_determination", "clinical_determination", "formal_investigation_finding", "reportability_determination", "regulatory_submission", "restrictive_practice_authorisation"]),
-    evidenceContract: governanceEvidence(["safeguarding_record", "participant_record"], ["complaint_record", "incident_record", "incident_investigation", "participant_account", "case_note", "hourly_observation", "staff_statement", "witness_statement", "care_plan", "behaviour_support_plan", "risk_assessment", "health_record", "medication_record", "restrictive_practice_record", "authorisation_record", "roster_schedule", "shift_record", "previous_safeguarding_record", "previous_incident_record", "complaints_history", "guardian_nominee_record", "advocate_record", "practitioner_correspondence", "police_record", "medical_record", "ambulance_paramedic_record", "photograph_record", "cctv_record", "communication_record", "service_delivery_record"], ["participant"], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["safeguarding_record", "participant_record"], ["complaint_record", "incident_record", "incident_investigation", "participant_account", "case_note", "hourly_observation", "staff_statement", "witness_statement", "care_plan", "behaviour_support_plan", "risk_assessment", "health_record", "medication_record", "restrictive_practice_record", "authorisation_record", "roster_schedule", "shift_record", "previous_safeguarding_record", "previous_incident_record", "complaints_history", "guardian_nominee_record", "advocate_record", "practitioner_correspondence", "police_record", "medical_record", "ambulance_paramedic_record", "photograph_record", "cctv_record", "communication_record", "service_delivery_record"], ["participant"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6230,7 +6246,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "compliance_quality_manager",
     supportingSpecialists: ["incident_safeguarding_specialist", "operations_manager", "process_asset_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("corrective_preventive_action_plan_effectiveness_review", "CAPA_EFFECTIVENESS_{issue}_{date}", ["root_cause_review", "barrier_analysis", "trend_review", "implementation_evidence_index", "effectiveness_review"], ["quality_certification", "incident_closure", "external_regulatory_submission", "legal_determination", "disciplinary_finding", "clinical_determination"]),
-    evidenceContract: governanceEvidence(["capa_record", "trigger_source_record"], ["incident_record", "incident_investigation", "incident_review", "safeguarding_assessment", "complaint_record", "internal_audit", "external_audit", "regulator_finding", "compliance_assessment", "case_note", "participant_record", "staff_record", "controlled_document", "procedure_record", "sop_record", "quality_register", "risk_register", "continuous_improvement_register", "training_record", "competency_record", "roster_schedule", "communication_record", "system_log", "financial_record", "process_record", "asset_record", "previous_capa_record", "previous_corrective_action", "effectiveness_review", "trend_data"], [], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["capa_record", "trigger_source_record"], ["incident_record", "incident_investigation", "incident_review", "safeguarding_assessment", "complaint_record", "internal_audit", "external_audit", "regulator_finding", "compliance_assessment", "case_note", "participant_record", "staff_record", "controlled_document", "procedure_record", "sop_record", "quality_register", "risk_register", "continuous_improvement_register", "training_record", "competency_record", "roster_schedule", "communication_record", "system_log", "financial_record", "process_record", "asset_record", "previous_capa_record", "previous_corrective_action", "effectiveness_review", "trend_data"], [], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6275,7 +6291,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "compliance_quality_manager",
     supportingSpecialists: ["behaviour_support_implementation_specialist", "service_delivery_coordinator", "authorised_program_officer", "incident_safeguarding_specialist", "operations_manager", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("clinical_professional_strategy_implementation_plan", "CLINICAL_STRATEGY_IMPLEMENTATION_{participant}_{date}", ["strategy_traceability_matrix", "implementation_evidence_index", "frontline_consistency_review", "professional_clarification_register"], ["clinical_determination", "diagnosis", "prescription", "medication_change", "treatment_change", "bsp_strategy_change", "therapy_program", "external_certification"]),
-    evidenceContract: governanceEvidence(["participant_professional_recommendation", "participant_record"], ["behaviour_support_plan", "interim_behaviour_support_plan", "care_plan", "support_plan", "allied_health_report", "occupational_therapy_report", "speech_pathology_report", "physiotherapy_report", "psychology_report", "clinical_report", "health_management_plan", "professional_risk_assessment", "hospital_discharge_recommendation", "communication_profile", "mealtime_plan", "mobility_plan", "risk_assessment", "restrictive_practice_record", "implementation_record", "case_note", "incident_record", "staff_observation", "training_record", "competency_record"], ["participant"], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["participant_professional_recommendation", "participant_record"], ["behaviour_support_plan", "interim_behaviour_support_plan", "care_plan", "support_plan", "allied_health_report", "occupational_therapy_report", "speech_pathology_report", "physiotherapy_report", "psychology_report", "clinical_report", "health_management_plan", "professional_risk_assessment", "hospital_discharge_recommendation", "communication_profile", "mealtime_plan", "mobility_plan", "risk_assessment", "restrictive_practice_record", "implementation_record", "case_note", "incident_record", "staff_observation", "training_record", "competency_record"], ["participant"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6318,7 +6334,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "chief_of_staff",
     supportingSpecialists: ["compliance_quality_manager", "operations_manager", "service_delivery_coordinator", "policy_governance_specialist", "incident_safeguarding_specialist", "process_asset_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("executive_governance_review_action_brief", "EXECUTIVE_GOVERNANCE_REVIEW_{organisation}_{period}", ["executive_dashboard", "decision_register", "action_register", "assurance_confidence_summary"], ["approval_decision", "policy_change", "investment_approval", "contract_commitment", "audit_finding", "incident_finding", "financial_determination", "hr_determination", "capa_closure"]),
-    evidenceContract: governanceEvidence(["governance_framework", "assurance_evidence"], ["organisation_chart", "delegation_record", "internal_audit", "external_audit", "risk_register", "continuous_improvement_register", "complaints_register", "incident_register", "safeguarding_review", "reportable_incident_record", "restrictive_practice_register", "capa_record", "legislative_register", "regulatory_register", "policy_register", "workforce_compliance_record", "training_assurance", "competency_assurance", "rostering_fatigue_record", "participant_service_assurance", "financial_governance_report", "management_report", "operational_report", "asset_site_assurance", "previous_governance_review", "governance_review_record", "outstanding_action"], [], 4, "block_completion"),
+    evidenceContract: governanceEvidence(["governance_framework", "assurance_evidence"], ["organisation_chart", "delegation_record", "internal_audit", "external_audit", "risk_register", "continuous_improvement_register", "complaints_register", "incident_register", "safeguarding_review", "reportable_incident_record", "restrictive_practice_register", "capa_record", "legislative_register", "regulatory_register", "policy_register", "workforce_compliance_record", "training_assurance", "competency_assurance", "rostering_fatigue_record", "participant_service_assurance", "financial_governance_report", "management_report", "operational_report", "asset_site_assurance", "previous_governance_review", "governance_review_record", "outstanding_action"], [], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6360,7 +6376,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "workforce_rostering_coordinator",
     supportingSpecialists: ["payroll_workforce_cost_officer", "workforce_compliance_specialist", "service_delivery_coordinator", "operations_manager", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("workforce_rostering_fatigue_risk_review", "ROSTER_FATIGUE_REVIEW_{scope}_{period}", ["scheduled_actual_shift_analysis", "rest_recovery_calculation", "fatigue_indicator_review", "coverage_risk_review", "monitoring_plan"], ["final_schads_determination", "payroll_entitlement_calculation", "disciplinary_decision", "attendance_performance_finding", "roster_publication", "employment_law_determination"]),
-    evidenceContract: workforceEvidence(["roster_schedule", "timesheet", "service_requirement"], ["roster_series", "shift_allocation", "attendance_record", "system_timestamp", "approved_overtime", "call_out_record", "sleepover_record", "active_night_record", "case_note", "hourly_observation", "participant_service_agreement", "support_ratio_record", "care_plan", "participant_risk_information", "worker_availability", "leave_record", "training_record", "staff_allocation", "payroll_record", "employment_record", "workforce_requirement", "previous_fatigue_concern", "incident_record", "complaint_record", "worker_report", "risk_assessment"], ["worker"], 4, "block_completion"),
+    evidenceContract: workforceEvidence(["roster_schedule", "timesheet", "service_requirement"], ["roster_series", "shift_allocation", "attendance_record", "system_timestamp", "approved_overtime", "call_out_record", "sleepover_record", "active_night_record", "case_note", "hourly_observation", "participant_service_agreement", "support_ratio_record", "care_plan", "participant_risk_information", "worker_availability", "leave_record", "training_record", "staff_allocation", "payroll_record", "employment_record", "workforce_requirement", "previous_fatigue_concern", "incident_record", "complaint_record", "worker_report", "risk_assessment"], ["worker"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6408,7 +6424,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "workforce_rostering_coordinator",
     supportingSpecialists: ["service_delivery_coordinator", "workforce_compliance_specialist", "operations_manager", "payroll_workforce_cost_officer", "people_culture_manager"],
     deliverableContract: docxDeliverable("participant_workforce_roster_plan", "PARTICIPANT_WORKFORCE_ROSTER_PLAN_{participant_or_site}_{period}", ["service_requirement_matrix", "coverage_calculation", "worker_availability_suitability_matrix", "proposed_roster", "allocation_rationale", "exception_register", "publish_readiness_summary"], ["published_roster", "worked_roster", "timesheet_record", "paid_roster", "shift_allocation_approval", "service_requirement_change", "support_ratio_change", "credential_certification", "competency_certification", "final_schads_determination", "payroll_entitlement_calculation", "employment_or_disciplinary_decision", "clinical_bsp_or_restrictive_practice_decision"]),
-    evidenceContract: workforceEvidence(["service_requirement", "worker_availability", "credential_record", "training_record", "roster_schedule"], ["participant_service_agreement", "support_schedule", "care_plan", "support_plan", "behaviour_support_plan", "participant_risk_information", "support_ratio_record", "community_access_schedule", "sleepover_record", "active_night_record", "leave_record", "worker_preference", "participant_preference", "competency_record", "screening_record", "qualification_record", "restriction_record", "previous_fatigue_concern", "rostering_fatigue_record", "overtime_record", "additional_hours_record", "payroll_record", "workforce_requirement", "previous_roster_exception"], ["worker"], 5, "block_completion"),
+    evidenceContract: workforceEvidence(["service_requirement", "worker_availability", "credential_record", "training_record", "roster_schedule"], ["participant_service_agreement", "support_schedule", "care_plan", "support_plan", "behaviour_support_plan", "participant_risk_information", "support_ratio_record", "community_access_schedule", "sleepover_record", "active_night_record", "leave_record", "worker_preference", "participant_preference", "competency_record", "screening_record", "qualification_record", "restriction_record", "previous_fatigue_concern", "rostering_fatigue_record", "overtime_record", "additional_hours_record", "payroll_record", "workforce_requirement", "previous_roster_exception"], ["worker"], 5, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6460,7 +6476,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "people_culture_manager",
     supportingSpecialists: ["talent_learning_specialist", "workforce_compliance_specialist", "service_delivery_coordinator", "incident_safeguarding_specialist", "compliance_quality_manager", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("workforce_performance_development_review", "WORKFORCE_PERFORMANCE_DEVELOPMENT_REVIEW_{worker}_{period}", ["role_expectation_matrix", "evidence_relevance_review", "strengths_review", "performance_concern_analysis", "competency_gap_review", "worker_response_summary", "development_action_plan", "improvement_action_plan", "system_factor_review"], ["disciplinary_decision", "termination_decision", "suspension_decision", "formal_conduct_finding", "misconduct_finding", "legal_advice", "credential_certification", "competency_certification", "payroll_entitlement_calculation", "clinical_bsp_or_restrictive_practice_decision"]),
-    evidenceContract: workforceEvidence(["performance_record", "employment_record", "employee_response"], ["supervision_record", "training_record", "competency_record", "credential_record", "roster_schedule", "timesheet", "service_requirement", "worker_availability", "role_description", "participant_record", "case_note", "hourly_observation", "incident_record", "complaint_record", "audit_record", "documentation_audit", "manager_observation", "participant_feedback", "positive_feedback", "previous_improvement_action", "rostering_fatigue_record"], ["worker"], 4, "block_completion"),
+    evidenceContract: workforceEvidence(["performance_record", "employment_record", "employee_response"], ["supervision_record", "training_record", "competency_record", "credential_record", "roster_schedule", "timesheet", "service_requirement", "worker_availability", "role_description", "participant_record", "case_note", "hourly_observation", "incident_record", "complaint_record", "audit_record", "documentation_audit", "manager_observation", "participant_feedback", "positive_feedback", "previous_improvement_action", "rostering_fatigue_record"], ["worker"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6522,7 +6538,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "people_culture_manager",
     supportingSpecialists: ["service_delivery_coordinator", "incident_safeguarding_specialist", "compliance_quality_manager", "workforce_compliance_specialist", "talent_learning_specialist", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("people_management_case_review_resolution_plan", "PEOPLE_MANAGEMENT_CASE_REVIEW_{matter}_{period}", ["case_summary", "scope_statement", "chronology", "party_account_summary", "evidence_reconciliation", "contradiction_register", "issue_classification", "participant_service_impact_review", "resolution_action_plan", "review_and_closure_plan"], ["termination_decision", "suspension_decision", "disciplinary_decision", "disciplinary_sanction", "formal_misconduct_finding", "formal_workplace_investigation_finding", "legal_advice", "industrial_advocacy", "credential_certification", "deployment_eligibility_certification", "payroll_entitlement_calculation", "roster_publication", "clinical_bsp_or_restrictive_practice_decision"]),
-    evidenceContract: workforceEvidence(["employment_record", "employee_response"], ["complaint_record", "grievance_record", "manager_observation", "staff_statement", "witness_account", "meeting_note", "email_record", "message_record", "supervision_record", "performance_record", "training_record", "incident_record", "participant_record", "case_note", "roster_schedule", "handover_record", "workplace_policy", "code_of_conduct", "position_description", "mediation_record", "previous_management_action", "service_requirement", "safeguarding_review", "audit_record"], ["worker"], 4, "block_completion"),
+    evidenceContract: workforceEvidence(["employment_record", "employee_response"], ["complaint_record", "grievance_record", "manager_observation", "staff_statement", "witness_account", "meeting_note", "email_record", "message_record", "supervision_record", "performance_record", "training_record", "incident_record", "participant_record", "case_note", "roster_schedule", "handover_record", "workplace_policy", "code_of_conduct", "position_description", "mediation_record", "previous_management_action", "service_requirement", "safeguarding_review", "audit_record"], ["worker"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6589,7 +6605,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "talent_learning_specialist",
     supportingSpecialists: ["workforce_compliance_specialist", "people_culture_manager", "service_delivery_coordinator", "workforce_rostering_coordinator", "behaviour_support_implementation_specialist", "authorised_program_officer", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("workforce_learning_competency_capability_development_plan", "WORKFORCE_CAPABILITY_DEVELOPMENT_PLAN_{worker_or_role}_{period}", ["required_capability_profile", "capability_matrix", "gap_readiness_assessment", "learning_development_plan", "competency_application_evidence", "effectiveness_renewal_review", "roster_readiness_summary"], ["competency_certification", "deployment_eligibility_certification", "credential_certification", "screening_clearance_determination", "legal_or_regulatory_applicability_determination", "disciplinary_decision", "performance_management_outcome", "roster_publication", "payroll_or_schads_determination", "clinical_bsp_or_restrictive_practice_decision"]),
-    evidenceContract: workforceEvidence(["employment_record", "training_record", "competency_record"], ["credential_record", "qualification_record", "screening_record", "certification_record", "role_description", "worker_profile", "service_requirement", "participant_record", "support_plan", "care_plan", "behaviour_support_plan", "clinical_professional_document", "restrictive_practice_authorisation", "medication_instruction", "manual_handling_plan", "mealtime_plan", "communication_plan", "health_management_plan", "risk_assessment", "supervision_record", "learning_record", "performance_record", "previous_development_plan", "workforce_compliance_record", "worker_availability", "roster_schedule", "current_authority"], ["worker"], 4, "block_completion"),
+    evidenceContract: workforceEvidence(["employment_record", "training_record", "competency_record"], ["credential_record", "qualification_record", "screening_record", "certification_record", "role_description", "worker_profile", "service_requirement", "participant_record", "support_plan", "care_plan", "behaviour_support_plan", "clinical_professional_document", "restrictive_practice_authorisation", "medication_instruction", "manual_handling_plan", "mealtime_plan", "communication_plan", "health_management_plan", "risk_assessment", "supervision_record", "learning_record", "performance_record", "previous_development_plan", "workforce_compliance_record", "worker_availability", "roster_schedule", "current_authority"], ["worker"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6697,7 +6713,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "payroll_workforce_cost_officer",
     supportingSpecialists: ["workforce_rostering_coordinator", "workforce_compliance_specialist", "people_culture_manager", "finance_officer", "financial_planning_reporting_manager", "service_delivery_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("payroll_workforce_cost_reconciliation_review", "PAYROLL_WORKFORCE_COST_RECONCILIATION_{worker}_{period}_{date}", ["shift_reconciliation", "deterministic_payroll_calculation", "current_authority_retrieval", "super_calculation", "payg_reconciliation", "long_service_leave_calculation", "workforce_cost_analysis", "variance_analysis", "correction_summary"], ["schads_legal_analysis", "tax_advice", "roster", "finance_report", "employment_review", "payrun_approval", "fund_transfer", "payroll_system_mutation", "payslip_generation", "tax_agent_certification", "personal_income_tax_advice", "legal_entitlement_determination", "award_interpretation_final_determination", "super_fund_contribution_certification", "long_service_leave_legal_determination", "accounting_or_audit_certification", "worker_eligibility_certification", "roster_publication"]),
-    evidenceContract: workforceEvidence(["payroll_record", "timesheet", "employment_record"], ["roster_schedule", "actual_work_record", "payslip", "payroll_export", "classification_record", "award_source", "current_authority", "employment_contract", "enterprise_agreement", "overtime_approval", "allowance_record", "sleepover_record", "active_night_record", "leave_record", "superannuation_record", "payg_withholding_record", "tax_declaration_record", "payroll_configuration", "long_service_leave_record", "reimbursement_record", "payroll_correction_record", "bank_payment_evidence", "worker_record", "service_requirement", "workforce_cost_record", "finance_record"], ["worker"], 4, "block_completion"),
+    evidenceContract: workforceEvidence(["payroll_record", "timesheet", "employment_record"], ["roster_schedule", "actual_work_record", "payslip", "payroll_export", "classification_record", "award_source", "current_authority", "employment_contract", "enterprise_agreement", "overtime_approval", "allowance_record", "sleepover_record", "active_night_record", "leave_record", "superannuation_record", "payg_withholding_record", "tax_declaration_record", "payroll_configuration", "long_service_leave_record", "reimbursement_record", "payroll_correction_record", "bank_payment_evidence", "worker_record", "service_requirement", "workforce_cost_record", "finance_record"], ["worker"], 4, "continue_with_flagged_gaps"),
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
@@ -6812,7 +6828,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: OPERATIONAL_READINESS_SECTIONS,
     requiredLibraryKnowledge: ["operational_readiness_checklist", "service_delivery_requirements", "quality_framework", "delegation_framework"],
@@ -6948,7 +6964,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       3,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: SOP_SECTIONS,
     requiredLibraryKnowledge: ["sop_template", "document_control_procedure", "policy_register", "delegation_framework", "process_register"],
@@ -7080,7 +7096,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       3,
-      "clarification_required",
+      "evidence_required",
     ),
     sections: PROCESS_ANALYSIS_SECTIONS,
     requiredLibraryKnowledge: ["process_map", "workflow_standard", "control_framework", "continuous_improvement_framework", "delegation_framework"],
@@ -7203,7 +7219,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       ["asset"],
       3,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: ASSET_LIFECYCLE_SECTIONS,
     requiredLibraryKnowledge: ["asset_register", "asset_management_procedure", "procurement_policy", "maintenance_register", "delegation_framework"],
@@ -7320,7 +7336,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       3,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: DOCUMENT_CONTROL_SECTIONS,
     requiredLibraryKnowledge: ["document_control_procedure", "document_register", "retention_schedule"],
@@ -7450,7 +7466,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: KNOWLEDGE_BASE_SECTIONS,
     requiredLibraryKnowledge: [
@@ -7585,7 +7601,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: CONTROLLED_ASSEMBLY_SECTIONS,
     requiredLibraryKnowledge: ["document_control_procedure", "template_register", "artifact_packaging_standard"],
@@ -7728,7 +7744,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: POLICY_SECTIONS,
     requiredLibraryKnowledge: ["policy_register", "document_control_procedure", "governance_framework", "current_authority_framework", "records_information_management_policy"],
@@ -7837,7 +7853,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["controlled_document", "delegation_record", "governance_policy", "risk_register", "assurance_record", "governance_forum_record", "reporting_record", "escalation_record", "conflict_of_interest_record", "stakeholder_feedback", "participant_feedback", "audit_record", "capa_record", "domain_owner_input", "organisational_decision"],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: GOVERNANCE_FRAMEWORK_SECTIONS,
     requiredLibraryKnowledge: ["governance_framework", "delegation_framework", "policy_framework", "risk_management_framework", "assurance_framework", "document_control_procedure"],
@@ -7933,7 +7949,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["legislative_register", "policy_register", "current_policy", "procedure_record", "training_matrix", "system_configuration", "form_template_record", "register_record", "domain_owner_finding", "implementation_evidence", "effectiveness_review", "risk_register", "audit_record", "capa_record", "service_delivery_record", "safeguarding_record"],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: REGULATORY_CHANGE_IMPACT_ASSESSMENT_SECTIONS,
     requiredLibraryKnowledge: ["regulatory_register", "policy_register", "governance_framework", "current_authority_framework", "evidence_management_policy"],
@@ -8028,7 +8044,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["controlled_document", "delegation_record", "authority_record", "governance_forum_record", "reporting_record", "risk_register", "audit_record", "practice_observation", "incident_record", "complaint_record", "safeguarding_record", "capa_record", "closure_evidence", "effectiveness_review", "domain_owner_finding", "participant_feedback", "stakeholder_feedback"],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: GOVERNANCE_GAP_SECTIONS,
     requiredLibraryKnowledge: ["governance_framework", "policy_register", "delegation_framework", "quality_assurance_framework", "evidence_management_policy", "capa_framework"],
@@ -8102,7 +8118,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["delegation_matrix", "controlled_document", "position_description", "employment_record", "appointment_record", "board_record", "financial_governance_report", "procurement_record", "banking_control", "safeguarding_record", "incident_record", "complaint_record", "workforce_record", "system_permission_evidence", "approval_record", "workflow_evidence", "conflict_of_interest_record", "acting_appointment", "current_authority", "statutory_appointment", "professional_standard", "contractual_requirement"],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: DELEGATION_FRAMEWORK_SECTIONS,
     requiredLibraryKnowledge: ["delegation_framework", "governance_framework", "delegation_of_authority_policy", "authority_matrix_standard", "conflict_of_interest_controls"],
@@ -8169,7 +8185,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["previous_audit_report", "regulator_correspondence", "governance_framework", "policy_register", "legislative_register", "risk_register", "continuous_improvement_register", "internal_audit_record", "governance_review", "participant_record", "support_plan", "service_agreement", "case_note", "risk_assessment", "medication_record", "incident_record", "complaint_record", "reportable_incident_record", "restrictive_practice_record", "behaviour_support_plan", "restrictive_practice_authorisation", "safeguarding_review", "screening_record", "qualification_record", "training_record", "competency_record", "orientation_record", "supervision_record", "workforce_compliance_record", "site_record", "emergency_documentation", "maintenance_record", "operational_procedure", "rostering_record", "service_delivery_record", "previous_finding", "remediation_plan", "capa_record", "closure_evidence", "effectiveness_review", "management_review_record", "document_register", "approval_record", "workflow_evidence", "system_record"],
       [],
       5,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: AUDIT_READINESS_SECTIONS,
     requiredLibraryKnowledge: ["audit_criteria", "quality_framework", "policy_register", "evidence_management_policy", "document_control_procedure", "capa_framework"],
@@ -8226,7 +8242,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["legislation", "legislative_instrument", "regulation", "regulatory_guidance", "registration_requirement", "registration_condition", "quality_indicator", "mandatory_standard", "government_guidance", "funding_requirement", "contractual_requirement", "professional_standard", "provider_registration", "registration_group", "service_scope", "operating_jurisdiction", "workforce_model", "participant_cohort", "site_record", "service_delivery_record", "professional_statutory_appointment", "regulatory_register", "compliance_register", "governance_framework", "policy_register", "controlled_document", "risk_register", "compliance_review", "audit_record", "regulatory_change_record", "operational_procedure", "training_record", "reporting_record", "notification_record", "approval_record", "system_record", "process_control"],
       [],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: LEGISLATION_REGULATORY_REVIEW_SECTIONS,
     requiredLibraryKnowledge: ["legislation_register", "regulatory_register", "policy_register", "current_authority_doctrine", "obligation_mapping_standard"],
@@ -8304,7 +8320,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "compliance_quality_manager",
     supportingSpecialists: ["policy_governance_specialist", "knowledge_documentation_specialist", "chief_of_staff"],
     deliverableContract: docxDeliverable("regulator_response_submission_package", "REGULATOR_RESPONSE_{matter}_{date}", ["issue_response_matrix", "evidence_schedule", "attachment_index", "submission_readiness_review"], ["external_submission", "unsupported_admission", "unsupported_denial", "legal_admission", "binding_regulatory_position", "substitute_investigation", "capa_without_request"]),
-    evidenceContract: regulatorResponseEvidence(["regulator_correspondence", "current_authority", "organisational_evidence", "approval_record"], ["controlled_document", "audit_record", "incident_record", "complaint_record", "restrictive_practice_record", "safeguarding_record", "capa_record", "investigation_report", "implementation_evidence", "attachment", "submission_draft"], [], 4, "block_completion"),
+    evidenceContract: regulatorResponseEvidence(["regulator_correspondence", "current_authority", "organisational_evidence", "approval_record"], ["controlled_document", "audit_record", "incident_record", "complaint_record", "restrictive_practice_record", "safeguarding_record", "capa_record", "investigation_report", "implementation_evidence", "attachment", "submission_draft"], [], 4, "continue_with_flagged_gaps"),
     sections: REGULATOR_RESPONSE_SECTIONS,
     requiredLibraryKnowledge: ["regulator_correspondence", "response_protocol", "document_control_procedure", "regulatory_register", "quality_framework"],
     requiredApprovals: { compliance_quality_owner: true, policy_governance_owner: true, external_submission_owner: true },
@@ -8343,7 +8359,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "payroll_workforce_cost_officer",
     supportingSpecialists: ["people_culture_manager", "workforce_compliance_specialist", "workforce_rostering_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("schads_award_analysis", ["coverage_classification_pay_point_schedule", "actual_work_award_treatment", "payroll_workforce_handoff"], ["legal_entitlement_determination", "payroll_calculation", "complete_payslip", "payg_withholding_calculation", "superannuation_reconciliation", "long_service_leave_liability", "backpay_approval", "roster_publication"]),
-    evidenceContract: schadsAwardEvidence(["current_award_source", "employment_record", "actual_work_record", "current_authority"], ["employment_contract", "variation_letter", "position_description", "classification_record", "pay_point_record", "roster_schedule", "timesheet", "clock_record", "sleepover_record", "active_night_record", "leave_record", "training_record", "travel_record", "payroll_record", "payslip", "payroll_configuration", "case_note", "incident_record", "worker_statement"], ["worker"], 4, "block_completion"),
+    evidenceContract: schadsAwardEvidence(["current_award_source", "employment_record", "actual_work_record", "current_authority"], ["employment_contract", "variation_letter", "position_description", "classification_record", "pay_point_record", "roster_schedule", "timesheet", "clock_record", "sleepover_record", "active_night_record", "leave_record", "training_record", "travel_record", "payroll_record", "payslip", "payroll_configuration", "case_note", "incident_record", "worker_statement"], ["worker"], 4, "continue_with_flagged_gaps"),
     sections: SCHADS_SECTIONS,
     requiredLibraryKnowledge: ["schads_award", "fair_work_guidance", "employment_policy", "payroll_procedure", "current_authority_doctrine"],
     requiredEntityKnowledge: { worker: true },
@@ -8381,7 +8397,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "workforce_compliance_specialist",
     supportingSpecialists: ["people_culture_manager", "payroll_workforce_cost_officer", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("employment_compliance_workforce_obligations_review", ["employment_relationship_summary", "authority_hierarchy_mapping", "issue_domain_compliance_findings", "risk_action_and_routing_plan"], ["legal_advice", "disciplinary_decision", "employment_decision", "award_interpretation", "payroll_calculation", "underpayment_reconciliation", "credential_deployment_approval", "performance_management_decision", "roster_fatigue_assessment", "tax_advice", "superannuation_liability_determination", "long_service_leave_liability"]),
-    evidenceContract: employmentComplianceEvidence(["employment_record", "current_authority", "employment_contract", "industrial_instrument"], ["variation_letter", "position_description", "employment_status_record", "classification_record", "pay_point_record", "fair_work_authority", "nes_authority", "award_source", "enterprise_agreement", "employment_policy", "controlled_document", "leave_record", "leave_application", "leave_balance", "approval_record", "payroll_record", "roster_schedule", "timesheet", "time_attendance_record", "flexible_work_request", "secondary_employment_disclosure", "supervision_record", "performance_record", "performance_improvement_plan", "warning_record", "meeting_record", "worker_response", "investigation_report", "conduct_outcome", "grievance_record", "resignation_record", "termination_correspondence", "exit_checklist", "access_record", "final_pay_handoff"], ["worker"], 4, "block_completion"),
+    evidenceContract: employmentComplianceEvidence(["employment_record", "current_authority", "employment_contract", "industrial_instrument"], ["variation_letter", "position_description", "employment_status_record", "classification_record", "pay_point_record", "fair_work_authority", "nes_authority", "award_source", "enterprise_agreement", "employment_policy", "controlled_document", "leave_record", "leave_application", "leave_balance", "approval_record", "payroll_record", "roster_schedule", "timesheet", "time_attendance_record", "flexible_work_request", "secondary_employment_disclosure", "supervision_record", "performance_record", "performance_improvement_plan", "warning_record", "meeting_record", "worker_response", "investigation_report", "conduct_outcome", "grievance_record", "resignation_record", "termination_correspondence", "exit_checklist", "access_record", "final_pay_handoff"], ["worker"], 4, "continue_with_flagged_gaps"),
     sections: EMPLOYMENT_COMPLIANCE_SECTIONS,
     requiredLibraryKnowledge: ["employment_policy", "workforce_compliance_framework", "fair_work_act", "national_employment_standards", "industrial_instruments", "current_authority_doctrine"],
     requiredEntityKnowledge: { worker: true },
@@ -8424,7 +8440,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "financial_planning_reporting_manager",
     supportingSpecialists: ["finance_officer", "payroll_workforce_cost_officer", "operations_manager", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("business_financial_performance_sustainability_analysis", ["financial_performance_review", "cash_liquidity_review", "driver_variance_review", "scenario_sensitivity_review", "management_action_plan"], ["investment_approval", "budget_approval", "expenditure_approval", "audit_certification", "tax_advice", "legal_advice", "accounting_system_mutation", "bookkeeping_entry", "ledger_adjustment", "payroll_reconciliation", "payroll_calculation", "banking_action", "fund_transfer"]),
-    evidenceContract: businessFinancialAnalysisEvidence(["financial_record", "management_account", "cashflow_record", "budget_or_forecast"], ["profit_and_loss", "balance_sheet", "general_ledger", "trial_balance", "chart_of_accounts", "bank_statement", "bank_balance", "cashflow_forecast", "funding_source_record", "restricted_cash_record", "invoice", "sales_record", "service_revenue_record", "ndis_claiming_record", "contract_record", "service_agreement", "receivable_record", "supplier_record", "expense_record", "lease_record", "procurement_record", "workforce_cost_record", "payroll_record", "budget", "forecast", "business_plan", "financial_target", "scenario_assumption", "accounts_payable", "loan_record", "tax_record", "super_record", "operational_record"], [], 4, "block_completion"),
+    evidenceContract: businessFinancialAnalysisEvidence(["financial_record", "management_account", "cashflow_record", "budget_or_forecast"], ["profit_and_loss", "balance_sheet", "general_ledger", "trial_balance", "chart_of_accounts", "bank_statement", "bank_balance", "cashflow_forecast", "funding_source_record", "restricted_cash_record", "invoice", "sales_record", "service_revenue_record", "ndis_claiming_record", "contract_record", "service_agreement", "receivable_record", "supplier_record", "expense_record", "lease_record", "procurement_record", "workforce_cost_record", "payroll_record", "budget", "forecast", "business_plan", "financial_target", "scenario_assumption", "accounts_payable", "loan_record", "tax_record", "super_record", "operational_record"], [], 4, "continue_with_flagged_gaps"),
     sections: FINANCIAL_ANALYSIS_SECTIONS,
     requiredLibraryKnowledge: ["management_accounts", "financial_reporting_framework", "budget_forecast_assumptions", "cashflow_analysis", "management_reporting"],
     requiredApprovals: { financial_planning_owner: true },
@@ -8474,7 +8490,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     professionalAuthority: "needsops_ai",
     supportingSpecialists: ["finance_officer", "payroll_workforce_cost_officer", "operations_manager", "knowledge_documentation_specialist"],
     deliverableContract: xlsxDeliverable("financial_planning_forecasting_management_reporting_workbook", "FINANCIAL_PLANNING_REPORTING_{scope}_{date}", ["forecast_review", "budget_variance_review", "management_reporting_review", "scenario_analysis", "cashflow_forecast_review", "financial_target_tracking"], ["budget_approval", "expenditure_approval", "investment_approval", "borrowing_approval", "hiring_approval", "service_expansion_approval", "marketing_spend_approval", "payment_execution", "accounting_system_mutation", "forecast_external_publication", "audit_certification", "tax_advice", "legal_advice"]),
-    evidenceContract: financialPlanningReportingEvidence(["reconciled_actuals", "budget", "forecast", "assumption_register", "cashflow_forecast"], ["financial_record", "management_account", "profit_and_loss", "balance_sheet", "general_ledger", "trial_balance", "reconciliation_report", "revenue_record", "service_revenue_record", "operating_cost_record", "workforce_cost_record", "payroll_record", "cashflow_record", "bank_balance", "restricted_cash_record", "receivable_record", "accounts_payable", "payable_record", "statutory_obligation_record", "debt_record", "lease_record", "prior_forecast", "reforecast", "budget_or_forecast", "financial_target", "strategic_plan", "business_plan", "service_plan", "workforce_plan", "scenario_assumption", "pricing_assumption", "service_volume_assumption", "staffing_assumption", "contract_commitment", "supplier_cost_record", "growth_assumption", "timing_assumption", "participant_record", "customer_record", "utilisation_record", "service_capacity_record", "workforce_capacity_record", "market_source", "current_authority"], [], 5, "block_completion"),
+    evidenceContract: financialPlanningReportingEvidence(["reconciled_actuals", "budget", "forecast", "assumption_register", "cashflow_forecast"], ["financial_record", "management_account", "profit_and_loss", "balance_sheet", "general_ledger", "trial_balance", "reconciliation_report", "revenue_record", "service_revenue_record", "operating_cost_record", "workforce_cost_record", "payroll_record", "cashflow_record", "bank_balance", "restricted_cash_record", "receivable_record", "accounts_payable", "payable_record", "statutory_obligation_record", "debt_record", "lease_record", "prior_forecast", "reforecast", "budget_or_forecast", "financial_target", "strategic_plan", "business_plan", "service_plan", "workforce_plan", "scenario_assumption", "pricing_assumption", "service_volume_assumption", "staffing_assumption", "contract_commitment", "supplier_cost_record", "growth_assumption", "timing_assumption", "participant_record", "customer_record", "utilisation_record", "service_capacity_record", "workforce_capacity_record", "market_source", "current_authority"], [], 5, "continue_with_flagged_gaps"),
     sections: FPR_SECTIONS,
     requiredLibraryKnowledge: ["budget_forecast_assumptions", "management_reporting_framework", "financial_reporting_framework", "current_authority_doctrine"],
     requiredApprovals: { financial_planning_owner: true },
@@ -8515,7 +8531,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "finance_officer",
     supportingSpecialists: ["financial_planning_reporting_manager", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("tax_statutory_financial_obligations_compliance_review", ["obligation_universe_review", "statutory_obligation_reconciliation_schedule", "variance_exposure_action_plan"], ["tax_agent_advice", "lodgement", "bas_submission", "stp_submission", "super_payment_initiation", "payment_approval", "fund_transfer", "audit_certification", "legal_advice", "tax_return_preparation", "authority_representation", "accounting_system_mutation", "journal_posting", "tax_code_change", "payroll_configuration_change", "banking_action"]),
-    evidenceContract: taxFinancialObligationEvidence(["tax_record", "financial_record", "current_authority", "external_confirmation"], ["entity_record", "authority_record", "statutory_requirement", "general_ledger", "trial_balance", "balance_sheet", "liability_account", "gst_account", "payg_payable", "super_payable", "payroll_tax_account", "journal_record", "reconciliation_record", "payroll_register", "payroll_summary", "payslip", "payg_calculation", "withholding_record", "stp_record", "super_calculation", "super_contribution_record", "bas_statement", "activity_statement", "payg_report", "payroll_tax_return", "fbt_record", "statutory_report", "lodgement_record", "ato_account_statement", "ato_lodgement_receipt", "authority_account_record", "super_clearing_house_record", "super_fund_confirmation", "state_revenue_record", "bank_statement", "bank_payment_evidence", "payment_arrangement", "statutory_notice", "regulator_correspondence", "invoice", "tax_invoice", "credit_note", "receipt", "employee_declaration", "contractor_record", "accountant_correspondence", "tax_agent_correspondence", "finance_approval", "director_funding_record"], [], 4, "block_completion"),
+    evidenceContract: taxFinancialObligationEvidence(["tax_record", "financial_record", "current_authority", "external_confirmation"], ["entity_record", "authority_record", "statutory_requirement", "general_ledger", "trial_balance", "balance_sheet", "liability_account", "gst_account", "payg_payable", "super_payable", "payroll_tax_account", "journal_record", "reconciliation_record", "payroll_register", "payroll_summary", "payslip", "payg_calculation", "withholding_record", "stp_record", "super_calculation", "super_contribution_record", "bas_statement", "activity_statement", "payg_report", "payroll_tax_return", "fbt_record", "statutory_report", "lodgement_record", "ato_account_statement", "ato_lodgement_receipt", "authority_account_record", "super_clearing_house_record", "super_fund_confirmation", "state_revenue_record", "bank_statement", "bank_payment_evidence", "payment_arrangement", "statutory_notice", "regulator_correspondence", "invoice", "tax_invoice", "credit_note", "receipt", "employee_declaration", "contractor_record", "accountant_correspondence", "tax_agent_correspondence", "finance_approval", "director_funding_record"], [], 4, "continue_with_flagged_gaps"),
     sections: TAX_OBLIGATION_SECTIONS,
     requiredLibraryKnowledge: ["tax_obligation_register", "finance_policy", "recordkeeping_procedure", "current_authority_doctrine", "statutory_obligation_reconciliation"],
     requiredApprovals: { finance_owner: true, external_tax_or_accounting_owner: true },
@@ -8571,7 +8587,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["transaction_reconciliation_review", "finance_exception_review", "ndis_claim_reconciliation_review", "partial_settlement_reconciliation", "bank_reconciliation_review"],
       ["payment_approval", "invoice_approval", "ndis_claim_submission", "participant_funding_change", "service_booking_change", "financial_system_mutation", "ledger_posting", "journal_posting", "bank_transaction", "payment_initiation", "refund_initiation", "payroll_determination", "tax_advice", "audit_certification"],
     ),
-    evidenceContract: operationalFinanceReconciliationEvidence(["financial_record", "transaction_record", "source_transaction_evidence", "settlement_evidence"], ["invoice", "supplier_invoice", "invoice_line", "credit_note", "adjustment_record", "refund_record", "invoice_status", "ndis_claim_file", "claim_batch", "claim_submission", "remittance_advice", "claim_rejection", "claim_exception", "claim_adjustment", "payment_advice", "remittance", "receipt", "payment_processor_record", "bank_statement", "bank_transaction", "general_ledger", "accounts_receivable", "accounts_payable", "customer_record", "supplier_record", "journal", "allocation_record", "reconciliation_report", "service_delivery_record", "service_agreement", "funding_record", "roster", "timesheet", "attendance_record", "case_note", "approved_purchase", "expense_evidence", "supplier_transaction", "reimbursement_request", "approval_record", "invoice_approval", "expense_approval", "payment_approval", "reimbursement_approval", "refund_approval", "current_authority", "ndis_pricing_authority", "support_item_authority"], [], 5, "block_completion"),
+    evidenceContract: operationalFinanceReconciliationEvidence(["financial_record", "transaction_record", "source_transaction_evidence", "settlement_evidence"], ["invoice", "supplier_invoice", "invoice_line", "credit_note", "adjustment_record", "refund_record", "invoice_status", "ndis_claim_file", "claim_batch", "claim_submission", "remittance_advice", "claim_rejection", "claim_exception", "claim_adjustment", "payment_advice", "remittance", "receipt", "payment_processor_record", "bank_statement", "bank_transaction", "general_ledger", "accounts_receivable", "accounts_payable", "customer_record", "supplier_record", "journal", "allocation_record", "reconciliation_report", "service_delivery_record", "service_agreement", "funding_record", "roster", "timesheet", "attendance_record", "case_note", "approved_purchase", "expense_evidence", "supplier_transaction", "reimbursement_request", "approval_record", "invoice_approval", "expense_approval", "payment_approval", "reimbursement_approval", "refund_approval", "current_authority", "ndis_pricing_authority", "support_item_authority"], [], 5, "continue_with_flagged_gaps"),
     sections: OPERATIONAL_FINANCE_SECTIONS,
     requiredLibraryKnowledge: ["finance_policy", "reconciliation_procedure", "delegation_framework", "ndis_pricing_authority"],
     requiredApprovals: { finance_owner: true },
@@ -8619,7 +8635,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["growth_concept", "operational_plan", "management_brief", "market_source", "referral_record", "participant_demand_record", "competitor_evidence", "marketing_strategy_output", "financial_record", "management_account", "budget", "forecast", "cashflow_forecast", "cashflow_record", "cost_model", "capital_requirement", "scenario_assumption", "workforce_record", "role_requirement", "recruitment_evidence", "credential_record", "worker_competency_record", "training_record", "workforce_compliance_assessment", "operational_readiness_assessment", "service_requirement", "service_delivery_record", "site_record", "property_record", "lease_record", "asset_register", "system_record", "supplier_record", "partner_record", "collaboration_agreement", "referral_arrangement", "current_authority", "registration_record", "practice_standard", "pricing_authority", "risk_assessment", "risk_register", "safeguarding_record", "incident_record", "continuity_record", "disaster_emergency_plan", "clinical_recommendation", "participant_record", "participant_cohort_evidence", "approval_record", "business_case"],
       [],
       6,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: BUSINESS_GROWTH_SECTIONS,
     requiredLibraryKnowledge: ["business_strategy", "market_analysis", "financial_forecast_assumptions", "workforce_planning_policy", "operational_readiness_framework", "risk_management_framework", "current_authority_registry"],
@@ -8700,7 +8716,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["brand_guideline", "service_requirement"],
       ["organisation"],
       8,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: NDIS_MARKETING_STRATEGY_SECTIONS,
     requiredLibraryKnowledge: ["brand_guidelines", "approved_claim_register", "ndis_marketing_policy", "service_catalogue", "referral_form", "participant_rights_information"],
@@ -8749,7 +8765,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     professionalAuthority: "needsops_ai",
     supportingSpecialists: ["compliance_quality_manager", "policy_governance_specialist", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("marketing_public_communications_claims_assurance_review", "MARKETING_PUBLIC_COMMUNICATIONS_CLAIMS_ASSURANCE_{communication_or_channel}_{date}", ["claim_register", "website_claim_review", "participant_rights_review", "accessibility_review", "privacy_consent_review", "publication_readiness_review"], ["public_publication", "website_change", "social_media_post", "stakeholder_communication_send", "participant_or_family_contact", "referral_partner_contact", "campaign_launch", "ad_spend_approval", "regulated_claim_approval", "clinical_claim_approval", "legal_position", "policy_publication", "public_document_alteration", "regulator_submission", "service_launch_approval"]),
-    evidenceContract: marketingEvidence(["communications_record", "approved_claim_source", "audience_research", "brand_guideline", "privacy_consent_record"], ["website_record", "website_page", "website_download", "public_document", "social_media_record", "service_catalogue", "service_requirement", "registration_record", "workforce_capability_record", "operational_record", "current_authority", "policy", "participant_rights_information", "safeguarding_material", "complaints_information", "accessibility_evidence", "referral_form", "marketing_strategy_output", "market_analysis_output", "controlled_template", "publication_approval", "professional_review_record", "campaign_record", "performance_record"], [], 5, "block_completion"),
+    evidenceContract: marketingEvidence(["communications_record", "approved_claim_source", "audience_research", "brand_guideline", "privacy_consent_record"], ["website_record", "website_page", "website_download", "public_document", "social_media_record", "service_catalogue", "service_requirement", "registration_record", "workforce_capability_record", "operational_record", "current_authority", "policy", "participant_rights_information", "safeguarding_material", "complaints_information", "accessibility_evidence", "referral_form", "marketing_strategy_output", "market_analysis_output", "controlled_template", "publication_approval", "professional_review_record", "campaign_record", "performance_record"], [], 5, "continue_with_flagged_gaps"),
     sections: MARKETING_SECTIONS,
     requiredLibraryKnowledge: ["brand_guidelines", "approved_claim_register", "communications_policy", "privacy_confidentiality", "participant_rights_information", "safeguarding_material", "accessibility_guidance"],
     requiredApprovals: { marketing_owner: true, external_publication_owner: true },
@@ -8788,7 +8804,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "marketing_communications_manager",
     supportingSpecialists: ["financial_planning_reporting_manager", "operations_manager", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("ndis_market_intelligence_demand_competitive_analysis", ["market_definition", "internal_demand_review", "external_market_review", "competitor_supply_review", "market_gap_review", "market_risk_and_confidence_review"], ["investment_approval", "guaranteed_revenue_claim", "service_launch_approval", "service_expansion_approval", "marketing_campaign_strategy", "campaign_launch", "public_market_claim", "competitor_contact", "referral_partner_contact", "ndis_registration_change", "partnership_approval", "tender_submission", "financial_forecast", "operational_readiness_certification"]),
-    evidenceContract: ndisMarketAnalysisEvidence(["market_scope", "market_source", "internal_market_signal", "external_market_source", "competitor_evidence", "current_authority"], ["referral_record", "enquiry_record", "waiting_list_record", "service_refusal_record", "service_commencement_record", "participant_geography_record", "requested_service_record", "funding_context", "complexity_record", "referral_source_record", "participant_dataset", "provider_dataset", "demographic_data", "vacancy_capacity_evidence", "market_report", "government_source", "ndis_source", "provider_directory", "provider_public_profile", "competitor_public_claim", "public_vacancy_record", "public_pricing_record", "partnership_listing", "ndis_pricing_authority", "support_item_authority", "regulatory_market_condition", "strategic_plan", "service_catalogue", "operational_capacity_record", "financial_analysis_output", "marketing_strategy_output", "sda_property_evidence", "collaboration_agreement", "tender_record"], [], 5, "block_completion"),
+    evidenceContract: ndisMarketAnalysisEvidence(["market_scope", "market_source", "internal_market_signal", "external_market_source", "competitor_evidence", "current_authority"], ["referral_record", "enquiry_record", "waiting_list_record", "service_refusal_record", "service_commencement_record", "participant_geography_record", "requested_service_record", "funding_context", "complexity_record", "referral_source_record", "participant_dataset", "provider_dataset", "demographic_data", "vacancy_capacity_evidence", "market_report", "government_source", "ndis_source", "provider_directory", "provider_public_profile", "competitor_public_claim", "public_vacancy_record", "public_pricing_record", "partnership_listing", "ndis_pricing_authority", "support_item_authority", "regulatory_market_condition", "strategic_plan", "service_catalogue", "operational_capacity_record", "financial_analysis_output", "marketing_strategy_output", "sda_property_evidence", "collaboration_agreement", "tender_record"], [], 5, "continue_with_flagged_gaps"),
     sections: MARKET_ANALYSIS_SECTIONS,
     requiredLibraryKnowledge: ["market_research_sources", "business_strategy", "current_authority_doctrine", "ndis_market_research", "service_access_records"],
     requiredApprovals: { marketing_owner: true },
@@ -8841,7 +8857,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["management_brief", "delegation_framework", "decision_authority_record", "business_growth_analysis_output", "market_analysis_output", "market_source", "marketing_strategy_output", "financial_analysis_output", "management_account", "budget", "forecast", "cashflow_forecast", "cashflow_record", "cost_model", "capital_requirement", "financial_assumption", "scenario_assumption", "benefit_register", "benefits_realisation_record", "workforce_plan", "workforce_record", "role_requirement", "recruitment_evidence", "training_record", "workforce_compliance_assessment", "operational_readiness_assessment", "operational_record", "operational_plan", "service_requirement", "property_record", "lease_record", "asset_register", "technology_requirement", "system_record", "supplier_record", "partner_record", "contract_record", "collaboration_agreement", "current_authority", "registration_record", "practice_standard", "licence_record", "permit_record", "privacy_record", "risk_assessment", "safeguarding_record", "incident_record", "continuity_record", "clinical_recommendation", "participant_record", "customer_record", "implementation_plan", "kpi_record", "governance_record", "controlled_document"],
       [],
       6,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: BUSINESS_PROPOSAL_SECTIONS,
     requiredLibraryKnowledge: ["business_case_template", "delegation_framework", "financial_forecast_assumptions", "benefits_realisation_framework", "risk_management_framework", "current_authority_registry"],
@@ -8905,7 +8921,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["request_record", "email_record", "meeting_record", "mediation_record", "management_instruction", "notice_received", "recipient_record", "relationship_record", "representative_authority", "guardian_authority", "nominee_authority", "consent_record", "privacy_record", "participant_record", "complaint_outcome", "complaint_record", "incident_record", "investigation_report", "safeguarding_record", "regulator_correspondence", "regulator_response_output", "service_agreement", "service_agreement_review_output", "contract_record", "commercial_agreement", "notice_requirement", "finance_decision", "financial_record", "workforce_decision", "people_management_record", "clinical_recommendation", "professional_output", "management_decision", "delegation_record", "professional_owner_decision", "current_authority", "controlled_template", "current_draft", "prior_correspondence", "attachment_record", "redaction_record", "disclosure_review", "communications_policy", "style_guide", "accessibility_evidence", "translation_record", "interpreter_record", "supported_decision_making_record", "send_authority_record", "signatory_authority", "delivery_record"],
       [],
       5,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: CORRESPONDENCE_SECTIONS,
     requiredLibraryKnowledge: ["style_guide", "communications_policy", "delegation_framework", "privacy_policy", "document_control_procedure", "current_authority_registry"],
@@ -8966,7 +8982,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["complaint_form", "complaint_email", "complainant_statement", "requested_outcome", "representative_authority", "advocate_record", "complaint_register_entry", "complaint_status_record", "acknowledgement_record", "timeliness_record", "closure_record", "outcome_communication", "incident_record", "safeguarding_record", "reportability_assessment", "immediate_control_record", "welfare_check", "investigation_report", "evidence_schedule", "respondent_statement", "witness_statement", "staff_statement", "participant_statement", "participant_record", "case_note", "service_delivery_record", "roster_schedule", "shift_record", "timesheet", "medication_record", "phone_log", "email_record", "message_record", "cctv_record", "photograph_record", "body_map", "medical_record", "service_agreement", "behaviour_support_plan", "care_plan", "controlled_document", "complaints_policy", "communications_policy", "current_authority", "regulator_correspondence", "privacy_record", "financial_record", "workforce_record", "people_management_record", "capa_record", "continuous_improvement_register", "action_plan", "training_record", "mediation_record", "recourse_information", "external_pathway_information", "communication_record"],
       ["complaint"],
       4,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: COMPLAINTS_RESPONSE_SECTIONS,
     requiredLibraryKnowledge: ["complaints_policy", "procedural_fairness_manual", "participant_rights_information", "incident_management_policy", "safeguarding_policy", "communications_policy"],
@@ -9031,7 +9047,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       ["terms_and_conditions", "service_agreement_template", "schedule_of_supports", "agreement_signature_record", "agreement_status_record", "agreement_variation_record", "representative_authority", "participant_statement", "representative_statement", "supported_decision_making_record", "consent_record", "ndis_plan", "price_guide", "pricing_authority", "service_delivery_record", "service_requirement", "support_plan", "care_plan", "roster_schedule", "invoice_record", "claim_record", "payment_record", "cancellation_record", "transport_record", "travel_record", "gst_record", "privacy_record", "complaint_record", "complaints_policy", "disaster_emergency_plan", "business_continuity_record", "continuity_record", "risk_assessment", "mealtime_plan", "clinical_recommendation", "dysphagia_assessment", "allergy_record", "training_record", "worker_competency_record", "controlled_document", "policy", "procedure", "approval_record", "document_control_record"],
       ["participant"],
       5,
-      "block_completion",
+      "continue_with_flagged_gaps",
     ),
     sections: SERVICE_AGREEMENT_SECTIONS,
     requiredLibraryKnowledge: ["service_agreement_template", "pricing_policy", "document_control_procedure", "participant_rights_information", "privacy_policy", "complaints_policy", "emergency_disaster_plan", "mealtime_management_guidance", "current_authority_registry"],

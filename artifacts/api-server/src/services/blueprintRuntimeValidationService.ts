@@ -28,6 +28,7 @@ import {
 
 export type BlueprintRuntimeGateState =
   | "validation"
+  | "evidence_required"
   | "awaiting_clarification"
   | "artifact_generation"
   | "artifact_generation_failed"
@@ -246,8 +247,7 @@ export function validateBlueprintRuntimeCompletion(
     input.contentMarkdown,
     input.evidencePack,
     standardTemplateEvidence,
-    input.professionalContext,
-    blueprint.code,
+    evidenceContract?.missingEvidenceBehaviour ?? "continue_with_flagged_gaps",
   ));
 
   if (deliverableContract) {
@@ -299,7 +299,7 @@ export function validateBlueprintRuntimeCompletion(
     }
   }
 
-  if (evidenceContract && !participantCarePlan) {
+  if (evidenceContract) {
     const minimumEvidenceCount = effectiveMinimumEvidenceCount(
       evidenceContract.minimumEvidenceCount ?? 0,
       evidenceContract.requiredEvidenceCategories ?? [],
@@ -307,14 +307,15 @@ export function validateBlueprintRuntimeCompletion(
     );
     const evidenceCount = countEvidenceItems(input.evidencePack);
     if (minimumEvidenceCount > 0 && evidenceCount < minimumEvidenceCount) {
-      failures.push({
-        gate: "missing_evidence",
-        state: evidenceContract.missingEvidenceBehaviour === "clarification_required"
-          ? "awaiting_clarification"
-          : "validation",
-        message: `Blueprint requires at least ${minimumEvidenceCount} evidence item(s); ${evidenceCount} available.`,
-        details: evidenceContract.requiredEvidenceCategories ?? [],
-      });
+      const state = blockingEvidenceFailureState(evidenceContract.missingEvidenceBehaviour);
+      if (state) {
+        failures.push({
+          gate: "missing_evidence",
+          state,
+          message: `Blueprint requires at least ${minimumEvidenceCount} evidence item(s); ${evidenceCount} available.`,
+          details: evidenceContract.requiredEvidenceCategories ?? [],
+        });
+      }
     }
 
     const requiredCategories = filterRequiredEvidenceCategories(
@@ -326,10 +327,11 @@ export function validateBlueprintRuntimeCompletion(
     );
     if (missingCategories.length > 0) {
       const behaviour = evidenceContract.missingEvidenceBehaviour ?? "continue_with_flagged_gaps";
-      if (behaviour === "block_completion" || behaviour === "clarification_required") {
+      const state = blockingEvidenceFailureState(behaviour);
+      if (state) {
         failures.push({
           gate: "missing_evidence",
-          state: behaviour === "clarification_required" ? "awaiting_clarification" : "validation",
+          state,
           message: "Blueprint required evidence categories are missing.",
           details: missingCategories,
         });
@@ -900,13 +902,10 @@ function validateSections(
   contentMarkdown: string,
   evidencePack?: EvidencePack | null,
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
-  professionalContext?: ProfessionalExecutionContext | null,
-  blueprintCode?: string | null,
+  missingEvidenceBehaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" = "continue_with_flagged_gaps",
 ): BlueprintRuntimeGateFailure[] {
   const failures: BlueprintRuntimeGateFailure[] = [];
   const sectionHeadingsAreAdvisory = isCustomerTemplateOptional(standardTemplateEvidence);
-  const participantCarePlan = blueprintCode === "care_plan" &&
-    professionalContext?.specificity === "PARTICIPANT_SPECIFIC";
   for (const section of sections.filter((s) => s.required)) {
     const content = extractSectionContent(contentMarkdown, section);
     if (!content) {
@@ -936,32 +935,40 @@ function validateSections(
       standardTemplateEvidence,
     );
     if (minimumEvidenceCount > 0 && countEvidenceItems(evidencePack) < minimumEvidenceCount) {
-      if (participantCarePlan) {
-        continue;
+      const state = blockingEvidenceFailureState(missingEvidenceBehaviour);
+      if (state) {
+        failures.push({
+          gate: "section_evidence",
+          state,
+          message: `Section ${section.sectionCode} requires ${minimumEvidenceCount} evidence item(s).`,
+        });
       }
-      failures.push({
-        gate: "section_evidence",
-        state: "validation",
-        message: `Section ${section.sectionCode} requires ${minimumEvidenceCount} evidence item(s).`,
-      });
     }
 
     const missing = effectiveCategories.filter((category) =>
       !hasEvidenceCategory(evidencePack, category, standardTemplateEvidence),
     );
     if (missing.length > 0) {
-      if (participantCarePlan) {
-        continue;
+      const state = blockingEvidenceFailureState(missingEvidenceBehaviour);
+      if (state) {
+        failures.push({
+          gate: "section_evidence",
+          state,
+          message: `Section ${section.sectionCode} required evidence categories are missing.`,
+          details: missing,
+        });
       }
-      failures.push({
-        gate: "section_evidence",
-        state: "validation",
-        message: `Section ${section.sectionCode} required evidence categories are missing.`,
-        details: missing,
-      });
     }
   }
   return failures;
+}
+
+function blockingEvidenceFailureState(
+  behaviour: "evidence_required" | "continue_with_flagged_gaps" | "block_completion" | null | undefined,
+): BlueprintRuntimeGateState | null {
+  if (behaviour === "block_completion") return "validation";
+  if (behaviour === "evidence_required") return "evidence_required";
+  return null;
 }
 
 function explicitlyStatesSectionEvidenceGap(content: string, missingCategories: string[]): boolean {

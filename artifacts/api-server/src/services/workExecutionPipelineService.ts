@@ -54,6 +54,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     entityKnowledge: input.entityKnowledge,
     title: input.title,
     conversationId: input.conversationId,
+    originConversationId: input.originConversationId,
     correlationId: input.correlationId,
     taskId: input.taskId,           // Sprint 29I (D1): thread CoS task ID through to engine
     onProgress: input.onProgress,

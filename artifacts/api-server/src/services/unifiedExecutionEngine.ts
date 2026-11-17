@@ -39,8 +39,9 @@ import { db, executionEventsTable, executionSessionsTable, organizationsTable, s
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
 import {
+  createBlueprintExecutionSurfaceContext,
   selectBlueprint,
-  getBlueprintById,
+  resolveBlueprintByIdForExecution,
   resolveCanonicalBlueprint,
   getBlueprintExecutionContract,
 } from "./workBlueprintService.js";
@@ -133,6 +134,9 @@ import {
   evaluateEvidenceSufficiency,
   isResultSufficient,
 } from "./evidenceSufficiencyService.js";
+import {
+  buildDeterministicEvidenceGapDeclaration,
+} from "./evidenceGapDeclarationService.js";
 // Sprint 29N.11: buildEmptyEvidencePack + buildInsufficientEvidenceMessage still needed
 import {
   buildEmptyEvidencePack,
@@ -278,6 +282,7 @@ export interface ExecuteWorkInput {
   entityKnowledge?: Record<string, unknown>;
   title?: string;
   conversationId?: string;
+  originConversationId?: string;
   correlationId?: string;
   /**
    * Sprint 29I (D1): The CoS-originated task ID.
@@ -301,6 +306,7 @@ export type ExecutionOutcome =
   | "completed"
   | "cancelled"
   | "validation_failed"
+  | "evidence_required"
   | "awaiting_clarification"
   | "no_blueprint"
   | "execution_failed"
@@ -359,6 +365,7 @@ export interface ExecutionCheckpointData {
   blueprint: WorkBlueprint | null;
   manifest: WorkPackageManifest;
   clarificationAnswer: string;
+  originConversationId?: string;
 }
 
 // ─── Unified request / result ─────────────────────────────────────────────────
@@ -378,6 +385,7 @@ export interface ExecutionRequest {
   entityKnowledge?: Record<string, unknown>;
   title?: string;
   conversationId?: string;
+  originConversationId?: string;
   correlationId?: string;
   /**
    * Sprint 29I (D1): CoS-originated task ID.
@@ -1101,6 +1109,10 @@ export class UnifiedExecutionEngine {
       blueprint = null;
       const t1 = Date.now();
       const effectiveCanonicalIntent = request.canonicalIntent ?? taskPlanIntent;
+      const blueprintExecutionContext = createBlueprintExecutionSurfaceContext({
+        taskId: request.taskId ?? null,
+        originConversationId: request.originConversationId ?? null,
+      });
 
       if (request.taskId && !effectiveCanonicalIntent && !request.blueprintCode && !request.blueprintId) {
         const message = buildIntentUnresolvedMessage({
@@ -1140,6 +1152,7 @@ export class UnifiedExecutionEngine {
       const canonicalSelection = await resolveCanonicalBlueprint(
         effectiveCanonicalIntent ?? request.blueprintCode,
         organizationId,
+        { executionSurfaceContext: blueprintExecutionContext },
       );
 
       if (canonicalSelection) {
@@ -1154,7 +1167,9 @@ export class UnifiedExecutionEngine {
           blueprintMode: canonicalSelection.blueprintMode,
         };
       } else if (request.blueprintId) {
-        blueprint = await getBlueprintById(request.blueprintId, organizationId);
+        blueprint = await resolveBlueprintByIdForExecution(request.blueprintId, organizationId, {
+          executionSurfaceContext: blueprintExecutionContext,
+        });
         selectionMeta = {
           method: "keyword",
           confidence: 1.0,
@@ -1163,7 +1178,9 @@ export class UnifiedExecutionEngine {
           ...(blueprint ? deriveBlueprintSelectionFloor(blueprint, effectiveCanonicalIntent ?? request.blueprintCode ?? userRequest) : {}),
         };
       } else if (request.blueprintCode) {
-        const selection = await selectBlueprint(request.blueprintCode, organizationId);
+        const selection = await selectBlueprint(request.blueprintCode, organizationId, {
+          executionSurfaceContext: blueprintExecutionContext,
+        });
         blueprint = selection.blueprint;
         selectionMeta = {
           method: selection.fallbackUsed ? "semantic" : "keyword",
@@ -1175,7 +1192,9 @@ export class UnifiedExecutionEngine {
           blueprintMode: selection.blueprintMode,
         };
       } else {
-        const selection = await selectBlueprint(userRequest, organizationId);
+        const selection = await selectBlueprint(userRequest, organizationId, {
+          executionSurfaceContext: blueprintExecutionContext,
+        });
         blueprint = selection.blueprint;
         selectionMeta = {
           method: selection.fallbackUsed ? "semantic" : (selection.matchedKeywords.length > 0 ? "keyword" : "none"),
@@ -1673,7 +1692,7 @@ export class UnifiedExecutionEngine {
       taskSession = closeExecutionSession(taskSession);
       ctx.session = taskSession;
       return {
-        outcome: "awaiting_clarification",
+        outcome: "evidence_required",
         manifestId: manifest.id,
         blueprintCode: blueprint?.code,
         validationResult,
@@ -2524,11 +2543,10 @@ export class UnifiedExecutionEngine {
       const blockingFailures = completionGateDisposition.hardFailures.length > 0
         ? completionGateDisposition.hardFailures
         : runtimeGate.failures;
+      const failureState = runtimeFailureManifestState(blockingFailures);
       await updateManifestObservability(manifest.id, {
         failureInfo: {
-          state: blockingFailures.some((failure) => failure.state === "awaiting_clarification")
-            ? "awaiting_clarification"
-            : "failed",
+          state: failureState,
           failedStage: "completion_gates",
           rootCause: blockingMessage,
           retryAvailable: true,
@@ -2552,7 +2570,7 @@ export class UnifiedExecutionEngine {
         modelTelemetry: latestModelTelemetry,
       });
 
-      taskSession = blockingFailures.some((failure) => failure.state === "awaiting_clarification")
+      taskSession = failureState === "evidence_required" || failureState === "awaiting_clarification"
         ? closeExecutionSession(taskSession)
         : markSessionError(taskSession, blockingMessage);
       ctx.session = taskSession;
@@ -2562,8 +2580,8 @@ export class UnifiedExecutionEngine {
         manifest,
         professionalContext,
         requesterId,
-        status: "failed",
-        errorMessage: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+        status: failureState === "evidence_required" ? "evidence_required" : failureState === "awaiting_clarification" ? "failed" : "failed",
+        errorMessage: failureState === "evidence_required" || failureState === "awaiting_clarification"
           ? null
           : blockingMessage,
         metadata: {
@@ -2575,9 +2593,7 @@ export class UnifiedExecutionEngine {
       });
 
       return {
-        outcome: blockingFailures.some((failure) => failure.state === "awaiting_clarification")
-          ? "awaiting_clarification"
-          : "validation_failed",
+        outcome: runtimeFailureOutcome(blockingFailures),
         manifestId: manifest.id,
         blueprintCode: blueprint?.code,
         message: `Blueprint completion gates blocked this work: ${blockingMessage}`,
@@ -2588,12 +2604,32 @@ export class UnifiedExecutionEngine {
           professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
         clarificationQuestions: blockingFailures
-          .filter((failure) => failure.state === "awaiting_clarification")
+          .filter((failure) => failure.state === "awaiting_clarification" || failure.state === "evidence_required")
           .map((failure) => failure.message),
       };
     }
 
     await progress("creating_completed_work");
+    const finalValidatedCoverageSnapshot = buildCoverageSnapshot(
+      reviewResult.finalContent,
+      professionalContext,
+      blueprintContract,
+      deliverableSections,
+      evidencePack,
+    );
+    const evidenceGapDeclaration = buildDeterministicEvidenceGapDeclaration({
+      contract: blueprintContract,
+      professionalContext,
+      evidencePack,
+      deliverableSections,
+    });
+    if (evidenceGapDeclaration) {
+      professionalWork = {
+        ...(professionalWork ?? {}),
+        deterministic_evidence_gap_declaration: evidenceGapDeclaration,
+      };
+    }
+
     await recordProfessionalSnapshot({
       organizationId,
       taskId: request.taskId,
@@ -2603,9 +2639,12 @@ export class UnifiedExecutionEngine {
       stage: "final_validated",
       sequence: snapshotSequence++,
       contentMarkdown: reviewResult.finalContent,
-      structuredOutput: { requirementPlan },
+      structuredOutput: {
+        requirementPlan,
+        ...(evidenceGapDeclaration ? { evidenceGapDeclaration } : {}),
+      },
       reviewSnapshot: buildReviewSnapshot(reviewResult),
-      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
+      coverageSnapshot: finalValidatedCoverageSnapshot,
       gateSnapshot: { passed: true, failures: [] },
       modelTelemetry: latestModelTelemetry,
     });
@@ -2714,6 +2753,7 @@ export class UnifiedExecutionEngine {
       title,
       outputType,
       contentMarkdown: reviewResult.finalContent,
+      evidenceGapDeclaration: evidenceGapDeclaration as Record<string, unknown> | null,
       reviewResult,
       createdByUserId: requesterId,
       approvalWorkflow: Object.keys(approvalWorkflow).length > 0 ? approvalWorkflow : undefined,
@@ -2833,11 +2873,10 @@ export class UnifiedExecutionEngine {
         const blockingMessage = artifactGate.failures
           .map((failure) => `${failure.gate}: ${failure.message}`)
           .join("; ");
+        const failureState = runtimeFailureManifestState(artifactGate.failures);
         await updateManifestObservability(manifest.id, {
           failureInfo: {
-            state: artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
-              ? "awaiting_clarification"
-              : "failed",
+            state: failureState,
             failedStage: "post_artifact_completion_gates",
             rootCause: blockingMessage,
             retryAvailable: true,
@@ -2845,7 +2884,7 @@ export class UnifiedExecutionEngine {
             gateFailures: artifactGate.failures,
           },
         }, organizationId);
-        taskSession = artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
+        taskSession = failureState === "evidence_required" || failureState === "awaiting_clarification"
           ? closeExecutionSession(taskSession)
           : markSessionError(taskSession, blockingMessage);
         ctx.session = taskSession;
@@ -2855,8 +2894,8 @@ export class UnifiedExecutionEngine {
           manifest,
           professionalContext,
           requesterId,
-          status: "failed",
-          errorMessage: blockingMessage,
+          status: failureState === "evidence_required" ? "evidence_required" : failureState === "awaiting_clarification" ? "failed" : "failed",
+          errorMessage: failureState === "evidence_required" || failureState === "awaiting_clarification" ? null : blockingMessage,
           metadata: {
             failedStage: "post_artifact_completion_gates",
             gateFailures: artifactGate.failures,
@@ -2865,9 +2904,7 @@ export class UnifiedExecutionEngine {
           },
         });
         return {
-          outcome: artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
-            ? "awaiting_clarification"
-            : "validation_failed",
+          outcome: runtimeFailureOutcome(artifactGate.failures),
           manifestId: manifest.id,
           blueprintCode: blueprint?.code,
           message: `Blueprint completion gates blocked this work after artifact generation: ${blockingMessage}`,
@@ -2878,7 +2915,7 @@ export class UnifiedExecutionEngine {
             professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
           },
           clarificationQuestions: artifactGate.failures
-            .filter((failure) => failure.state === "awaiting_clarification")
+            .filter((failure) => failure.state === "awaiting_clarification" || failure.state === "evidence_required")
             .map((failure) => failure.message),
         };
       }
@@ -4084,13 +4121,27 @@ function classifyCompletionGateFailuresForProduction(
       hardFailures.push(failure);
     } else if (APPROVAL_BLOCKING_COMPLETION_GATES.has(failure.gate)) {
       approvalBlockers.push(failure);
-    } else if (failure.state === "awaiting_clarification" || failure.state === "artifact_generation") {
+    } else if (failure.state === "evidence_required" || failure.state === "awaiting_clarification" || failure.state === "artifact_generation") {
       hardFailures.push(failure);
     } else {
       approvalBlockers.push(failure);
     }
   }
   return { hardFailures, approvalBlockers, metadataOnly };
+}
+
+function runtimeFailureManifestState(
+  failures: BlueprintRuntimeGateFailure[],
+): "evidence_required" | "awaiting_clarification" | "failed" {
+  if (failures.some((failure) => failure.state === "evidence_required")) return "evidence_required";
+  if (failures.some((failure) => failure.state === "awaiting_clarification")) return "awaiting_clarification";
+  return "failed";
+}
+
+function runtimeFailureOutcome(failures: BlueprintRuntimeGateFailure[]): ExecutionOutcome {
+  if (failures.some((failure) => failure.state === "evidence_required")) return "evidence_required";
+  if (failures.some((failure) => failure.state === "awaiting_clarification")) return "awaiting_clarification";
+  return "validation_failed";
 }
 
 function renderIncompleteDraftHeader(input: {
@@ -7946,7 +7997,7 @@ function buildRuntimeGateFailureItems(
         reason: detail.slice(0, 240),
       }));
     }
-    return failure.state === "awaiting_clarification"
+    return failure.state === "awaiting_clarification" || failure.state === "evidence_required"
       ? [{ name: failure.gate, reason: failure.message }]
       : [];
   });
@@ -8687,13 +8738,13 @@ async function persistInlineExecutionSession(input: {
   manifest: WorkPackageManifest;
   professionalContext: ProfessionalExecutionContext;
   requesterId: string;
-  status: "running" | "completed" | "failed" | "cancelled";
+  status: "running" | "completed" | "failed" | "cancelled" | "evidence_required";
   errorMessage?: string | null;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
   if (!input.taskId) return;
   const now = new Date();
-  const terminalAt = ["completed", "failed", "cancelled"].includes(input.status) ? now : null;
+  const terminalAt = ["completed", "failed", "cancelled", "evidence_required"].includes(input.status) ? now : null;
   const metadata = {
     runtimeSelection: "aws_native_inline_uee",
     blueprintId: input.manifest.blueprintId ?? null,
