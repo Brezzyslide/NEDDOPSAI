@@ -63,6 +63,8 @@ export interface DeliverableRequirementCoverageFailure {
   sourceBlueprintSection?: string;
   requiredDeliverableRepresentation: string;
   expectedRepresentation?: string;
+  adequacyCriteria?: string[];
+  templateCriteria?: string[];
   actualLocation?: string | null;
   structuralResult?: RequirementStructuralResult;
   substantiveResult?: RequirementSubstantiveResult;

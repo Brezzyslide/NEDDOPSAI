@@ -28,6 +28,51 @@ interface GapTarget {
   sortKey: string;
 }
 
+const EVIDENCE_CATEGORY_LABELS: Record<string, string> = {
+  allied_health_report: "allied health report",
+  behaviour_support_plan: "behaviour support plan",
+  business_continuity_plan: "business continuity plan",
+  care_plan: "care plan",
+  clinical_assessment: "clinical assessment or allied health report",
+  clinical_determination: "clinical determination",
+  clinical_mealtime_plan: "clinical mealtime plan",
+  clinical_report: "clinical report or allied health report",
+  community_access_risk_assessment: "community access risk assessment",
+  credential_certification: "credential certification",
+  current_authority: "current authority",
+  disaster_management_risk_assessment: "disaster or emergency management risk assessment",
+  emergency_management_plan: "emergency management plan",
+  emergency_services_determination: "emergency services determination",
+  external_regulatory_submission: "external regulatory submission",
+  final_reportability_determination: "final reportability determination",
+  fire_safety_certification: "fire safety certification",
+  formal_authorisation: "formal authorisation",
+  functional_behaviour_assessment: "functional behaviour assessment",
+  health_support_plan: "health support plan",
+  home_safety_checklist: "home safety checklist",
+  incident_investigation_report: "incident investigation report",
+  intake_form: "intake form",
+  legal_determination: "legal determination",
+  mealtime_management_risk_assessment: "mealtime management risk assessment",
+  ndis_plan: "NDIS plan",
+  ot_assessment: "occupational therapy assessment or allied health report",
+  other_participant_document: "participant document categorised as other",
+  participant_voice: "participant voice evidence from a strengths-based questionnaire or intake form",
+  physiotherapy_assessment: "physiotherapy assessment or allied health report",
+  restrictive_practice_authorisation: "restrictive practice authorisation",
+  risk_assessment: "risk assessment",
+  service_agreement: "service agreement",
+  signing_process: "signed endorsement or consent record",
+  speech_assessment: "speech pathology assessment or allied health report",
+  strengths_based_questionnaire: "strengths-based questionnaire",
+  task_upload: "task upload",
+  whs_determination: "WHS determination",
+};
+
+export function evidenceGapDeclarationLabelCatalog(): Record<string, string> {
+  return { ...EVIDENCE_CATEGORY_LABELS };
+}
+
 export function buildDeterministicEvidenceGapDeclaration(input: {
   contract?: BlueprintExecutionContract | null;
   professionalContext?: ProfessionalExecutionContext | null;
@@ -46,7 +91,7 @@ export function buildDeterministicEvidenceGapDeclaration(input: {
     const category = normaliseEvidenceCategory(rawCategory);
     if (!category || presentCategories.has(category)) return;
     const existing = categories.get(category) ?? {
-      label: humaniseEvidenceCategory(category),
+      label: evidenceCategoryLabel(category),
       targets: new Map<string, GapTarget>(),
     };
     if (target) existing.targets.set(target.sortKey, target);
@@ -55,7 +100,7 @@ export function buildDeterministicEvidenceGapDeclaration(input: {
 
   for (const category of contract.blueprint.evidenceContract?.requiredEvidenceCategories ?? []) {
     addCategory(category, {
-      label: `${humaniseEvidenceCategory(category)} dependent evidence requirements`,
+      label: `requirements that depend on ${evidenceCategoryLabel(category)}`,
       sortKey: `evidence-contract:${normaliseEvidenceCategory(category)}`,
     });
   }
@@ -226,7 +271,7 @@ function missingEvidenceStatement(
   category: string,
   uncategorisedParticipantDocumentsCited: string[],
 ): string {
-  const bare = label.replace(/^(?:a|an|the)\s+/i, "");
+  const bare = providerActionableEvidenceLabel(label, category);
   const base = `No ${bare} was found in the retrieved organisation library or task evidence.`;
   if (category === "other_participant_document" || uncategorisedParticipantDocumentsCited.length === 0) {
     return base;
@@ -235,48 +280,21 @@ function missingEvidenceStatement(
     ? "Uncategorised participant document cited as evidence"
     : "Uncategorised participant documents cited as evidence";
   const action = uncategorisedParticipantDocumentsCited.length === 1
-    ? "Review and recategorise this document if it is the required document."
-    : "Review and recategorise these documents if any is the required document.";
+    ? "Review and recategorise this document if it satisfies the missing evidence requirement."
+    : "Review and recategorise these documents if any satisfies the missing evidence requirement.";
   return `${base} ${noun}: ${uncategorisedParticipantDocumentsCited.join("; ")}. ${action}`;
 }
 
-function humaniseEvidenceCategory(category: string): string {
+function providerActionableEvidenceLabel(label: string, category: string): string {
   const normalised = normaliseEvidenceCategory(category);
-  const known: Record<string, string> = {
-    allied_health_report: "allied health report",
-    behaviour_support_plan: "behaviour support plan",
-    business_continuity_plan: "business continuity plan",
-    clinical_assessment: "clinical assessment",
-    clinical_determination: "clinical determination",
-    clinical_mealtime_plan: "clinical mealtime plan",
-    credential_certification: "credential certification",
-    current_authority: "current authority",
-    emergency_services_determination: "emergency services determination",
-    external_regulatory_submission: "external regulatory submission",
-    final_reportability_determination: "final reportability determination",
-    fire_safety_certification: "fire safety certification",
-    formal_authorisation: "formal authorisation",
-    functional_behaviour_assessment: "functional behaviour assessment",
-    incident_investigation_report: "incident investigation report",
-    intake_form: "intake form",
-    legal_determination: "legal determination",
-    ndis_plan: "NDIS plan",
-    restrictive_practice_authorisation: "restrictive practice authorisation",
-    risk_assessment: "risk assessment",
-    service_agreement: "service agreement",
-    task_upload: "task upload",
-    whs_determination: "WHS determination",
-  };
-  return known[normalised] ?? normalised
-    .split("_")
-    .filter(Boolean)
-    .map((part) => {
-      if (part === "ndis") return "NDIS";
-      if (part === "whs") return "WHS";
-      if (part === "bsp") return "BSP";
-      return part;
-    })
-    .join(" ");
+  const mapped = EVIDENCE_CATEGORY_LABELS[normalised];
+  if (mapped) return mapped.replace(/^(?:a|an|the)\s+/i, "");
+  return label.replace(/^(?:a|an|the)\s+/i, "");
+}
+
+function evidenceCategoryLabel(category: string): string {
+  const normalised = normaliseEvidenceCategory(category);
+  return EVIDENCE_CATEGORY_LABELS[normalised] ?? `document or evidence satisfying the "${category}" requirement`;
 }
 
 function normaliseEvidenceCategory(value: string): string {

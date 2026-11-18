@@ -20,6 +20,7 @@ import type { ProfessionalExecutionContext } from "./professionalExecutionContex
 import {
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
+  type DeliverableRequirementCoverageFailure,
   type PerRequirementDeliverableSection,
 } from "./deliverableRequirementCoverageService.js";
 import {
@@ -59,6 +60,7 @@ export interface BlueprintRuntimeGateFailure {
   state: BlueprintRuntimeGateState;
   message: string;
   details?: string[];
+  audit?: Array<Record<string, unknown>>;
 }
 
 export interface BlueprintRuntimeValidationInput {
@@ -212,10 +214,9 @@ export function validateBlueprintRuntimeCompletion(
           message: "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
           details: [
             `coverage=${coverageReport.satisfiedCount}/${coverageReport.mandatoryRequirementCount} (${coverageReport.coveragePercentage}%)`,
-            ...blockingCoverageFailures.slice(0, 20).map((failure) =>
-              `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
-            ),
+            ...blockingCoverageFailures.slice(0, 20).map(formatCoverageFailureDetail),
           ],
+          audit: blockingCoverageFailures.map(formatCoverageFailureAudit),
         });
       }
     }
@@ -1591,6 +1592,33 @@ function containsDeliverableHeading(contentMarkdown: string, deliverable: string
   if (!label) return false;
   const escaped = escapeRegExp(label);
   return new RegExp(`(?:^|\\n)#{1,3}\\s*(?:standalone\\s+)?${escaped}\\b`, "i").test(contentMarkdown);
+}
+
+function formatCoverageFailureDetail(failure: DeliverableRequirementCoverageFailure): string {
+  return `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification}) — ${failure.reason}`;
+}
+
+function formatCoverageFailureAudit(failure: DeliverableRequirementCoverageFailure): Record<string, unknown> {
+  return {
+    requirementId: failure.requirementId,
+    requirement: failure.requirement,
+    classification: failure.classification,
+    sourceBlueprintSection: failure.sourceBlueprintSection ?? null,
+    requiredDeliverableRepresentation: failure.requiredDeliverableRepresentation,
+    expectedRepresentation: failure.expectedRepresentation ?? null,
+    actualLocation: failure.actualLocation ?? null,
+    structuralResult: failure.structuralResult ?? null,
+    substantiveResult: failure.substantiveResult ?? null,
+    finalResult: failure.finalResult ?? null,
+    substantiveValidationMode: failure.substantiveValidationMode ?? null,
+    adequacyCriteria: failure.adequacyCriteria ?? [],
+    templateCriteria: failure.templateCriteria ?? [],
+    expectedEvidenceCategories: failure.expectedEvidenceCategories ?? [],
+    reason: failure.reason,
+    ...(failure.citationFindings && failure.citationFindings.length > 0
+      ? { citationFindings: failure.citationFindings }
+      : {}),
+  };
 }
 
 function escapeRegExp(value: string): string {
