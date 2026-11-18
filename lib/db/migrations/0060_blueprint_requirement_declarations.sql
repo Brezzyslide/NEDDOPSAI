@@ -16,17 +16,3 @@ BEGIN
       CHECK (execution_surface IN ('task_only', 'conversation_allowed'));
   END IF;
 END $$;
-
-UPDATE work_blueprints
-SET
-  requires_participant = COALESCE(requires_participant, TRUE),
-  composes_with = COALESCE(composes_with, '[]'::jsonb),
-  execution_surface = COALESCE(execution_surface, 'task_only');
-
-UPDATE work_blueprints
-SET
-  outcome_label = COALESCE(outcome_label, 'Care Plan'),
-  requires_participant = TRUE,
-  composes_with = COALESCE(composes_with, '[]'::jsonb),
-  execution_surface = 'task_only'
-WHERE code = 'care_plan';

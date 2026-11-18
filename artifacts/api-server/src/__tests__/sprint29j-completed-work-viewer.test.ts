@@ -435,6 +435,68 @@ describe("Sprint 29J — Export MIME types and content", () => {
       uncategorisedParticipantDocumentsCited: ["Michael Rocca Comprehensive Behaviour Support Plan"],
     });
   });
+
+  it("14d. Server-derived evidence gap declaration reports uncategorised participant documents with no document category", () => {
+    const declaration = buildDeterministicEvidenceGapDeclaration({
+      contract: {
+        blueprint: {
+          evidenceContract: {
+            requiredEvidenceCategories: ["behaviour_support_plan"],
+          },
+        },
+        sections: [{
+          sectionCode: "BEHAVIOURAL_MANAGEMENT",
+          title: "Behavioural Management",
+          sortOrder: 1,
+          evidenceRequirements: {
+            requiredEvidenceCategories: ["behaviour_support_plan"],
+          },
+        }],
+        template: null,
+        mode: "create",
+      } as any,
+      evidencePack: {
+        chunks: [{
+          chunkId: "chunk-uncategorised-participant-document",
+          sourceId: "src-1",
+          sourceVersionId: "ver-1",
+          sourceTitle: "Participant uploaded support document",
+          versionLabel: null,
+          sourceType: "participant_document",
+          documentCategory: null,
+          evidenceClass: "PROFESSIONAL_SOURCE",
+          authorityLevel: "primary",
+          sectionTitle: null,
+          pageNumber: null,
+          text: "Behaviour support strategies...",
+          confidence: 1,
+          citation: "Participant uploaded support document",
+          selectionReason: "test",
+        }],
+        totalChunks: 1,
+      } as any,
+      deliverableSections: [{
+        requirementId: "care-plan-behavioural-management",
+        heading: "Behavioural Management",
+        content: "Behaviour support strategies are included from the cited uploaded document.",
+        evidenceSources: [{
+          chunkId: "chunk-uncategorised-participant-document",
+          documentTitle: "Participant uploaded support document",
+          passage: "Behaviour support strategies",
+          location: "p. 1",
+        }],
+      }],
+    });
+
+    expect(declaration).not.toBeNull();
+    expect(declaration?.markdown).toContain("No behaviour support plan was found in the retrieved organisation library or task evidence.");
+    expect(declaration?.markdown).toContain("Uncategorised participant document cited as evidence: Participant uploaded support document.");
+    expect(declaration?.markdown).toContain("Review and recategorise this document if it is the required document.");
+    expect(declaration?.missingCategories[0]).toMatchObject({
+      category: "behaviour_support_plan",
+      uncategorisedParticipantDocumentsCited: ["Participant uploaded support document"],
+    });
+  });
 });
 
 // ─── Tests 15–16: Cross-tenant isolation ──────────────────────────────────────

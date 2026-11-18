@@ -172,12 +172,15 @@ function uncategorisedParticipantDocumentTitles(
 ): string[] {
   const titles = new Set<string>();
   for (const cited of citedChunks) {
-    const exactValues = [
-      cited.chunk.documentCategory,
-      cited.chunk.sourceType,
-    ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .map(normaliseEvidenceCategory);
-    if (!exactValues.includes("other_participant_document")) continue;
+    const documentCategory = typeof cited.chunk.documentCategory === "string" && cited.chunk.documentCategory.trim().length > 0
+      ? normaliseEvidenceCategory(cited.chunk.documentCategory)
+      : null;
+    const sourceType = typeof cited.chunk.sourceType === "string" && cited.chunk.sourceType.trim().length > 0
+      ? normaliseEvidenceCategory(cited.chunk.sourceType)
+      : null;
+    const isUncategorisedParticipantDocument = documentCategory === "other_participant_document"
+      || (sourceType === "participant_document" && !documentCategory);
+    if (!isUncategorisedParticipantDocument) continue;
     const title = [
       cited.documentTitle,
       cited.chunk.sourceTitle,
