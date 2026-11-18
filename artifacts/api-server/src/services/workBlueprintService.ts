@@ -3035,6 +3035,7 @@ function blueprintTargetValues(entry: RegistryEntry, current: WorkBlueprint, now
     composesWith: entry.composesWith ?? [],
     executionSurface: entry.executionSurface ?? "task_only",
     primaryDeliverable: entry.primaryDeliverable,
+    evidenceContract: entry.evidenceContract,
     updatedAt: now,
   };
 }
