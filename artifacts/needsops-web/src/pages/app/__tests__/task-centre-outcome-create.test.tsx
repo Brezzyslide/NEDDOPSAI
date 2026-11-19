@@ -71,7 +71,7 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 });
 
-describe("care-plan UI end to end affordances", () => {
+describe("task centre outcome create affordances", () => {
   it("renders stored artifact download controls in the completed work portal for evidence_required work", async () => {
     const user = userEvent.setup();
     const artifactDownloadCalls: string[] = [];
@@ -162,13 +162,88 @@ describe("care-plan UI end to end affordances", () => {
     ]));
   });
 
-  it("serialises a fresh participant care plan request only after a participant is selected", async () => {
+  it("renders outcome requirements from backend-resolved fixtures and serialises only the selected intent", async () => {
     const user = userEvent.setup();
     const postRequests: Array<{ path: string; body: unknown }> = [];
     mocks.apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         postRequests.push({ path, body: JSON.parse(String(init.body)) });
         return jsonResponse({ task: { id: `task-${postRequests.length}` }, reusedExisting: false }, 201);
+      }
+      if (path.endsWith("/work-blueprints")) {
+        return jsonResponse({
+          blueprints: [
+            {
+              id: "blueprint-care-plan-primary",
+              code: "care_plan",
+              title: "Participant Care Plan",
+              family: "participant_support",
+              purpose: "Create a participant support plan.",
+              canonicalIntent: "care_plan.create",
+              outcomeLabel: "Care Plan",
+              requiresParticipant: true,
+              composesWith: ["blueprint-care-plan-companion"],
+              requiredEvidenceCategories: ["ndis_plan"],
+            },
+            {
+              id: "blueprint-care-plan-duplicate-mode",
+              code: "care_plan_alt",
+              title: "Care Plan Alternate Mode",
+              canonicalIntent: "care_plan.create",
+              outcomeLabel: "Care Plan Duplicate",
+              requiresParticipant: true,
+              composesWith: [],
+              requiredEvidenceCategories: ["service_agreement"],
+            },
+            {
+              id: "blueprint-policy-summary",
+              code: "policy_summary",
+              title: "Policy Summary",
+              canonicalIntent: "policy.summary.create",
+              outcomeLabel: "Policy Summary",
+              requiresParticipant: false,
+              composesWith: [],
+              requiredEvidenceCategories: ["controlled_document"],
+            },
+            {
+              id: "blueprint-without-outcome",
+              code: "internal_blueprint",
+              title: "Internal Blueprint",
+              canonicalIntent: "internal.blueprint.create",
+              outcomeLabel: null,
+              requiresParticipant: false,
+              composesWith: [],
+              requiredEvidenceCategories: [],
+            },
+          ],
+        });
+      }
+      if (path.endsWith("/work-blueprints/outcomes/care_plan.create")) {
+        return jsonResponse({
+          outcome: {
+            canonicalIntent: "care_plan.create",
+            outcomeLabel: "Care Plan",
+            requiresParticipant: true,
+            requiredEvidenceCategories: ["ndis_plan", "service_agreement"],
+            blueprintSet: [
+              { id: "blueprint-care-plan-primary", code: "care_plan", title: "Participant Care Plan", family: "participant_support", canonicalIntent: "care_plan.create", outcomeLabel: "Care Plan", requiresParticipant: true, composesWith: ["blueprint-care-plan-companion"], requiredEvidenceCategories: ["ndis_plan"] },
+              { id: "blueprint-care-plan-companion", code: "service_context", title: "Service Context", family: "participant_support", canonicalIntent: null, outcomeLabel: null, requiresParticipant: true, composesWith: [], requiredEvidenceCategories: ["service_agreement"] },
+            ],
+          },
+        });
+      }
+      if (path.endsWith("/work-blueprints/outcomes/policy.summary.create")) {
+        return jsonResponse({
+          outcome: {
+            canonicalIntent: "policy.summary.create",
+            outcomeLabel: "Policy Summary",
+            requiresParticipant: false,
+            requiredEvidenceCategories: ["controlled_document"],
+            blueprintSet: [
+              { id: "blueprint-policy-summary", code: "policy_summary", title: "Policy Summary", family: "policy", canonicalIntent: "policy.summary.create", outcomeLabel: "Policy Summary", requiresParticipant: false, composesWith: [], requiredEvidenceCategories: ["controlled_document"] },
+            ],
+          },
+        });
       }
       if (path.endsWith("/participants?limit=200")) {
         return jsonResponse({
@@ -186,39 +261,51 @@ describe("care-plan UI end to end affordances", () => {
     expect(screen.queryByRole("button", { name: "+ New Task" })).not.toBeInTheDocument();
     expect(screen.queryByText("Create New Task")).not.toBeInTheDocument();
 
-    const createButton = await screen.findByRole("button", { name: "Create care plan" });
+    const createButton = await screen.findByRole("button", { name: "Create" });
     expect(createButton).toBeDisabled();
+    expect(await screen.findByRole("option", { name: "Care Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Policy Summary" })).toBeInTheDocument();
+    expect(screen.queryByText("Internal Blueprint")).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Care Plan Duplicate" })).not.toBeInTheDocument();
 
-    await user.selectOptions(await screen.findByLabelText("Participant"), "7bb35c11-83f2-4f2b-af01-38633ba1cfa0");
-    expect(screen.getByText(/Bound participant ID:/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Create care plan" }));
+    await user.selectOptions(await screen.findByLabelText("Outcome"), "policy.summary.create");
+    expect(await screen.findByText("Controlled Document")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Participant")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(postRequests).toHaveLength(1));
 
+    await user.selectOptions(await screen.findByLabelText("Outcome"), "care_plan.create");
+    expect(await screen.findByText("NDIS plan")).toBeInTheDocument();
+    expect(screen.getByText("Service agreement")).toBeInTheDocument();
+    expect(screen.getByText("Service Context")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
     await user.selectOptions(await screen.findByLabelText("Participant"), "7bb35c11-83f2-4f2b-af01-38633ba1cfa0");
-    await user.click(screen.getByRole("button", { name: "Create care plan" }));
+    expect(screen.getByText(/Bound participant ID:/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(postRequests).toHaveLength(2));
 
     expect(postRequests).toEqual([
       {
         path: "/v1/organisations/mhr-holdings-pty-ltd/tasks",
         body: {
-          title: "Create participant-specific care plan",
-          description: "Create a participant-specific care plan.",
+          title: "Create Policy Summary",
+          description: "Create Policy Summary.",
           priority: "normal",
-          originatingModule: "task_centre_direct_care_plan",
-          sourceUserRequest: "Create a participant-specific care plan.",
+          originatingModule: "task_centre_outcome_create",
+          sourceUserRequest: "Create Policy Summary.",
+          outcomeCanonicalIntent: "policy.summary.create",
           allowDuplicate: true,
-          subjectParticipantIds: ["7bb35c11-83f2-4f2b-af01-38633ba1cfa0"],
         },
       },
       {
         path: "/v1/organisations/mhr-holdings-pty-ltd/tasks",
         body: {
-          title: "Create participant-specific care plan",
-          description: "Create a participant-specific care plan.",
+          title: "Create Care Plan",
+          description: "Create Care Plan.",
           priority: "normal",
-          originatingModule: "task_centre_direct_care_plan",
-          sourceUserRequest: "Create a participant-specific care plan.",
+          originatingModule: "task_centre_outcome_create",
+          sourceUserRequest: "Create Care Plan.",
+          outcomeCanonicalIntent: "care_plan.create",
           allowDuplicate: true,
           subjectParticipantIds: ["7bb35c11-83f2-4f2b-af01-38633ba1cfa0"],
         },

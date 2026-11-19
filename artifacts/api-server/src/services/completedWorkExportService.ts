@@ -358,6 +358,7 @@ async function buildStructuredCarePlanMetadata(input: StructuredCarePlanMetadata
 
   const metadata = {
     participantName: firstNonEmpty(
+      declaredFields.participantName,
       participant.displayName,
       participant.preferredName,
     ) ?? "Not recorded",

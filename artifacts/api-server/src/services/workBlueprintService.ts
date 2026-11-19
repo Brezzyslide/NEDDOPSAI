@@ -161,6 +161,7 @@ export interface BlueprintDescriptor {
   title: string;
   family: string | null;
   purpose: string | null;
+  canonicalIntent: string | null;
   supportedModes: string[];
   version: string;
   maturity: BlueprintMaturityState;
@@ -170,6 +171,7 @@ export interface BlueprintDescriptor {
   outcomeLabel: string | null;
   requiresParticipant: boolean;
   composesWith: string[];
+  requiredEvidenceCategories: string[];
   executionSurface: BlueprintExecutionSurface;
   supportedOutputFormats: string[];
   organisationConfigurableSettings: BlueprintPermittedOrgOverrides;
@@ -197,6 +199,26 @@ export interface BlueprintSpecification extends BlueprintDescriptor {
   evidenceContract: BlueprintEvidenceContract | null;
   sections: BlueprintSection[];
   template: WorkTemplate | null;
+}
+
+export interface ResolvedOutcomeBlueprint {
+  id: string;
+  code: string;
+  title: string;
+  family: string | null;
+  canonicalIntent: string | null;
+  outcomeLabel: string | null;
+  requiresParticipant: boolean;
+  composesWith: string[];
+  requiredEvidenceCategories: string[];
+}
+
+export interface ResolvedOutcomeBlueprintSet {
+  canonicalIntent: string;
+  outcomeLabel: string;
+  blueprintSet: ResolvedOutcomeBlueprint[];
+  requiresParticipant: boolean;
+  requiredEvidenceCategories: string[];
 }
 
 export interface BlueprintVersion {
@@ -952,9 +974,11 @@ export function toBlueprintDescriptor(bp: WorkBlueprint): BlueprintDescriptor {
     title: bp.title,
     family: bp.blueprintFamily,
     purpose: bp.purpose,
+    canonicalIntent: null,
     outcomeLabel: bp.outcomeLabel ?? null,
     requiresParticipant: bp.requiresParticipant ?? true,
     composesWith: bp.composesWith ?? [],
+    requiredEvidenceCategories: bp.evidenceContract?.requiredEvidenceCategories ?? [],
     executionSurface: bp.executionSurface ?? "task_only",
     supportedModes: bp.supportedModes,
     version: bp.version,
@@ -971,6 +995,58 @@ export function toBlueprintDescriptor(bp: WorkBlueprint): BlueprintDescriptor {
     defaultTemplateId: bp.defaultTemplateId,
     allowedOrgTemplateOverride: bp.allowedOrgTemplateOverride,
     templateVersionPolicy: bp.templateVersionPolicy,
+  };
+}
+
+function uniqueBlueprintStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values
+    .map(value => value?.trim())
+    .filter((value): value is string => Boolean(value))));
+}
+
+async function getCanonicalIntentMapForBlueprints(
+  blueprintIds: string[],
+  organizationId: string,
+): Promise<Map<string, string>> {
+  const uniqueIds = uniqueBlueprintStrings(blueprintIds);
+  if (uniqueIds.length === 0) return new Map();
+
+  const rows = await db
+    .select()
+    .from(blueprintIntentMappingsTable)
+    .where(and(
+      inArray(blueprintIntentMappingsTable.blueprintId, uniqueIds),
+      eq(blueprintIntentMappingsTable.isActive, true),
+      or(
+        eq(blueprintIntentMappingsTable.organizationId, organizationId),
+        isNull(blueprintIntentMappingsTable.organizationId),
+      ),
+    ))
+    .orderBy(desc(blueprintIntentMappingsTable.organizationId));
+
+  const result = new Map<string, string>();
+  for (const row of rows) {
+    if (!result.has(row.blueprintId)) {
+      result.set(row.blueprintId, row.canonicalIntent);
+    }
+  }
+  return result;
+}
+
+function toResolvedOutcomeBlueprint(
+  blueprint: WorkBlueprint,
+  canonicalIntent: string | null,
+): ResolvedOutcomeBlueprint {
+  return {
+    id: blueprint.id,
+    code: blueprint.code,
+    title: blueprint.title,
+    family: blueprint.blueprintFamily,
+    canonicalIntent,
+    outcomeLabel: blueprint.outcomeLabel ?? null,
+    requiresParticipant: blueprint.requiresParticipant ?? true,
+    composesWith: blueprint.composesWith ?? [],
+    requiredEvidenceCategories: blueprint.evidenceContract?.requiredEvidenceCategories ?? [],
   };
 }
 
@@ -1536,6 +1612,99 @@ export async function listBlueprints(
   }
 
   return results;
+}
+
+export async function listOutcomeBlueprintDescriptors(
+  organizationId: string,
+  options: ListBlueprintsOptions = {},
+): Promise<BlueprintDescriptor[]> {
+  const blueprints = await listBlueprints(organizationId, options);
+  const canonicalIntentByBlueprintId = await getCanonicalIntentMapForBlueprints(
+    blueprints.map(blueprint => blueprint.id),
+    organizationId,
+  );
+  return blueprints
+    .map(blueprint => ({
+      ...toBlueprintDescriptor(blueprint),
+      canonicalIntent: canonicalIntentByBlueprintId.get(blueprint.id) ?? null,
+    }))
+    .filter(blueprint => Boolean(blueprint.outcomeLabel?.trim()) && Boolean(blueprint.canonicalIntent?.trim()));
+}
+
+async function resolveComposedBlueprint(
+  key: string,
+  organizationId: string,
+): Promise<WorkBlueprint | null> {
+  const byId = await getBlueprintById(key, organizationId);
+  if (byId) return byId;
+
+  const byCode = await findBlueprintByCode(key, organizationId);
+  if (byCode) return byCode;
+
+  const byIntent = await resolveCanonicalBlueprint(key, organizationId).catch(() => null);
+  return byIntent?.blueprint ?? null;
+}
+
+async function findBlueprintByCanonicalIntent(
+  canonicalIntent: string,
+  organizationId: string,
+): Promise<WorkBlueprint | null> {
+  const rows = await db
+    .select()
+    .from(blueprintIntentMappingsTable)
+    .where(and(
+      eq(blueprintIntentMappingsTable.canonicalIntent, canonicalIntent),
+      eq(blueprintIntentMappingsTable.isActive, true),
+      or(
+        eq(blueprintIntentMappingsTable.organizationId, organizationId),
+        isNull(blueprintIntentMappingsTable.organizationId),
+      ),
+    ))
+    .orderBy(desc(blueprintIntentMappingsTable.organizationId))
+    .limit(1);
+
+  const mapping = rows[0];
+  if (!mapping) return null;
+  return getBlueprintById(mapping.blueprintId, organizationId);
+}
+
+export async function resolveOutcomeBlueprintSet(
+  canonicalIntent: string,
+  organizationId: string,
+): Promise<ResolvedOutcomeBlueprintSet | null> {
+  const normalizedIntent = canonicalIntent.trim();
+  if (!normalizedIntent) return null;
+
+  const root = await findBlueprintByCanonicalIntent(normalizedIntent, organizationId);
+  if (!root?.outcomeLabel?.trim()) return null;
+
+  const blueprints: WorkBlueprint[] = [root];
+  const seen = new Set<string>([root.id]);
+
+  for (const key of root.composesWith ?? []) {
+    const child = await resolveComposedBlueprint(key, organizationId);
+    if (child && !seen.has(child.id)) {
+      blueprints.push(child);
+      seen.add(child.id);
+    }
+  }
+
+  const canonicalIntentByBlueprintId = await getCanonicalIntentMapForBlueprints(
+    blueprints.map(blueprint => blueprint.id),
+    organizationId,
+  );
+  const blueprintSet = blueprints.map(blueprint => toResolvedOutcomeBlueprint(
+    blueprint,
+    canonicalIntentByBlueprintId.get(blueprint.id) ?? (blueprint.id === root.id ? normalizedIntent : null),
+  ));
+
+  return {
+    canonicalIntent: normalizedIntent,
+    outcomeLabel: root.outcomeLabel.trim(),
+    blueprintSet,
+    requiresParticipant: blueprintSet.some(blueprint => blueprint.requiresParticipant),
+    requiredEvidenceCategories: uniqueBlueprintStrings(blueprintSet.flatMap(blueprint => blueprint.requiredEvidenceCategories)),
+  };
 }
 
 /**

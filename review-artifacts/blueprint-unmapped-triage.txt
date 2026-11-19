@@ -1,0 +1,855 @@
+## genuine_document_types_provider_could_upload (324)
+activity records
+activity/support records
+Acts/statutes
+actual delivery evidence
+actual delivery records
+administration logs
+advocate/guardian/nominee correspondence
+allied-health assessment
+allied-health progress report
+allied-health/clinical reports
+amendment notice
+APO assessment outcome
+Assessment artifact
+Assessment request
+assessments
+attendance/activity records
+Audit/assurance scope
+audit/readiness checks
+Authority evidence package
+Award/EA/industrial instrument evidence
+Award/instrument
+behaviour support practitioner input
+board/executive minutes
+CAPA/action records
+case notes
+Case notes
+case notes/progress notes
+case/progress notes
+Case/progress notes
+case/shift notes
+case/shift/progress notes
+case_note
+CCTV/objective record where available
+claim record
+claims
+clinical advice
+clinical advice record
+clinical correspondence
+clinical emergency plan
+clinical instruction records
+clinical instruction review
+clinical instructions
+clinical plans
+clinical professional correspondence
+clinical report
+clinical reports
+clinical/emergency instructions
+clinical/professional instructions
+commencement instrument
+Communication profile
+communication profile
+compliance_audit_readiness outputs where already performed
+consultation notes
+contact/address/guardian records
+contract variations
+contracts/funding agreements
+contractual/funding requirements
+controlled document register
+controlled-drug register
+corrective actions
+corrective-action history
+corrective-action records
+corrective_action_record
+correspondence
+current and target arrangement information
+current policies/procedures/forms/registers/systems/training records/service documentation
+Current policies/procedures/SOPs
+current provider information
+current roster
+current support profile
+current/receiving-provider information
+delegated clinical task instruction
+delegation matrix
+delivered/invoiced records
+emails/communications
+emails/letters
+emergency information
+emergency plans
+emergency/crisis instructions
+Employment contract
+employment contract
+escalation logs
+evidence contract
+existing obligation register
+existing professional reports
+Exit policy/procedure
+external professional advice
+external reporting evidence
+Fair Work/SCHADS instrument
+family/guardian contact records
+family/representative information
+FBA/behaviour assessment
+finance projection
+finance reconciliation
+finance utilisation reports
+functional assessment
+funding profile
+funding statement
+governance/audit plan
+Governed authority evidence package
+GP report
+GP reports
+GP/prescriber/specialist letter
+handoff register
+handover pack
+Handover records
+handover records
+health assessment
+health assessments
+Health Management Plan
+health notes
+health/mealtime/medication plans
+health/medication/mealtime plans
+hospital/discharge report
+hospital/discharge reports
+hospital/justice discharge plan
+incident report
+incident reports
+Incident reports
+incident/case notes
+industrial instrument
+industrial instruments
+Invoice
+invoiced support
+invoices/claims
+issued communications
+key register
+legal advice
+legal/external advice
+legal/industrial advice
+legislation/regulation/rule/standard
+legislation/regulation/rule/standard/registration condition/industrial instrument/regulator notice/funding body requirement
+legislative instruments
+letter of offer
+management communications
+management handover
+management note
+manager/worker statements
+mandatory standards
+manual handling plan
+MAR
+MAR PRN entries
+MAR/medication evidence
+MAR/medication_record
+Mealtime Management Plan
+mealtime notes
+mealtime plan
+Mealtime Plan
+mealtime_management_plan
+medical report
+Medication audit
+medication audits
+Medication authority
+medication authority
+Medication Authority Form
+medication authority/management information
+Medication chart
+medication chart
+Medication chart/authority
+Medication chart/prescribing evidence
+Medication competency assessment
+medication error report
+medication handover
+medication policy
+medication policy/procedure
+Medication Purpose Form
+medication records/MAR where chemical restraint is relevant
+medication signing sheet
+medication/health/mealtime plans
+medication/mealtime/health/manual handling plans
+medication/mealtime/manual-handling requirements
+medication/PRN protocol
+meeting minutes
+mental health/clinical reports
+mobility/manual handling plan
+Monthly reports
+monthly summaries
+monthly_reporting_record
+NDIS Commission guidance/notice
+notice terms
+nursing_plan
+obligation register
+obligation register history
+offboarding checklist
+official regulator website extract
+operational communications
+organisation/customer legislative or obligation register
+organisational charts
+organisational emergency procedure
+organisational medication policy
+organisational medication procedure
+organisational procedure
+organisational procedures
+participant profile
+Participant profile
+participant/family information
+participant/representative communication
+participant/representative information
+payment/claim record
+payroll configuration. Conditional: Award variation/history, superseded instruments, cohort role evidence, dispute records, template/source provenance
+payroll reconciliation evidence
+performance-management records
+periodic reports
+Periodic reports
+periodic summaries
+pharmacist/RN instruction within authority
+pharmacy/clinical instruction
+plan dates
+planned support evidence
+planned/scheduled/actual/variance/claiming sources
+policies/procedures
+policies/procedures/frameworks/templates
+policy/control mapping
+policy/control/register mappings
+policy/procedure evidence
+position description/duty statement
+Practitioner assessment
+Practitioner correspondence
+Practitioner input
+Practitioner recommendations
+Practitioner review
+Practitioner review records
+Practitioner/clinical input
+prescriber letter
+prescriber/GP/specialist letter
+prescription-related clinical instruction
+Previous legislation/rule/standard/version
+previous periodic reports
+previous reports
+previous RP reports
+prior health plan
+prior regulator submissions
+prior_mealtime_assessment
+PRN protocol
+professional correspondence
+professional reports
+Progress notes
+progress notes
+progress/case information
+progress/case notes
+project/change plan
+protected disclosures
+provider acceptance/transfer information
+provider communications
+Provider governance procedure
+Provider procedure
+Provider RP governance procedure
+Provider RP procedure
+receiving-provider information
+Referral
+referral requirements
+Referral/onboarding documents
+referral/onboarding request
+registers
+regulations
+regulator correspondence
+regulator notice
+Regulator notice/request
+regulatory/reporting records
+reportable_incident_assessment
+restrictive_practice_record
+retained copy
+retained PDF/screenshot/copy where available
+review meeting notes
+risk information
+risk register
+risks/gaps register
+Roster
+roster
+roster amendments
+Roster of Care
+roster planning inputs
+roster/attendance/delivery/claim/invoice evidence where in scope
+roster/capacity
+Roster/capacity evidence
+roster/capacity evidence
+roster/staffing evidence
+Rosters
+rosters
+RP assessment
+RP register
+RP reporting evidence
+RP/medication authority
+rp_register
+rules
+safeguarding plan
+schads_coverage_and_classification assessment
+Schedule of Supports
+service logs
+service/activity/register evidence
+shift notes
+site/program summaries
+specialist report
+specialist reports
+staff schedules
+staff statement
+staff statements
+staff_statement
+stakeholder communications
+summaries
+Support Coordinator/planner correspondence
+Support Coordinator/planner input
+support delivery evidence across plan period
+support logs
+support schedule
+swallowing_assessment
+systems/forms/registers
+texture/fluid instructions
+timesheet/invoice reconciliation
+timesheets
+timesheets where reliable
+timesheets/clock records
+timesheets/delivery records
+Transition schedule
+transport information
+transport plan
+treatment sheet
+updated professional instructions
+updated registers/forms/contracts
+Weekly summaries
+weekly summaries
+weekly/fortnightly/monthly summaries
+weekly/monthly summaries
+work_package_evidence
+
+## derived_work_product_content (61)
+action register
+Action register
+all analysis sections
+All completed review sections
+All evidence roles
+all material evidence categories
+All planned, scheduled, actual, variance and claiming evidence
+All populated evidence categories
+All report sections
+All review findings
+All reviewed evidence
+All reviewed goal, baseline, support-delivery, participation/progress, participant voice, barrier and specialist evidence
+All reviewed medication, administration, incident, storage/security and competency records
+All reviewed service-delivery, case-note, activity, incident, medication, appointment, risk, goal, participant voice and previous-report evidence
+All reviewed service-delivery, roster, case note, attendance, cancellation, incident, claim, corrective-action and approval evidence
+all searched evidence categories
+all supplied evidence
+all supplied health/support evidence
+All transition evidence
+audit findings
+barriers/variance section
+calculation outputs
+calculation schedule
+comparison table
+Completed assessment sections
+Completed implementation requirements
+Completed readiness checklist
+Completed report sections
+Completed review sections
+completed risk-domain table
+completed scenario response plans
+Completed sections of this plan
+Delivery review outcome
+Evidence gaps
+Gap analysis
+Gap assessment
+Goal outcome determinations
+governance/action registers
+impact assessment
+investigation findings where supplied
+Less restrictive alternatives section
+Medication support outcome
+next action recommendations
+Outcome determination
+overall risk analysis
+pathway findings
+Planned-vs-actual comparison
+populated requirements set
+previous audit findings
+readiness outcome
+related compliance-audit handoff
+Rights impact assessment
+Risk comparison
+risk findings
+Risk without RP section
+Source plans/authorities
+staged phases
+strategy table
+support alignment
+support strategy table
+Variance review
+
+## system_sources (64)
+All source documents and evidence records used in the work package
+All transition-relevant evidence used in the work package
+approval records
+approval/artifact records
+approvals
+approvals/actions
+artifact generation status
+artifact status
+audience/template selection
+authority/source URL or reference
+Completed sections of this review and evidence/source schedule
+current authority rates
+current authority source
+Current authority work package supplied upstream
+current authority/KRS evidence
+current authority/rate evidence
+current authority/regulatory source
+current authority/regulatory source where applicable
+deliverable/artifact record
+document-control metadata
+document-control records
+domain owner confirmations
+domain-owner approvals
+domain-owner commitments
+electronic audit trails
+evidence source schedule
+formula metadata
+Foundation: schads_coverage_and_classification assessment, employment contract, applicable industrial instrument/Award, authority variation/history, Fair Work authority evidence. Work-pattern: roster, roster changes, timesheets, clock records, attendance records, sleepover records, active-night records, shift handovers, case/progress notes, incident records, communication/logbook records, supervisor records, worker statements, provider-supplied reconstruction. Payroll comparison: payroll export, payslips, earning/allowance codes, payroll configuration, ordinary/overtime/sleepover coding. Other: prior industrial review, legal/industrial advice, workplace policy/procedure where relevant
+governance approvals
+HRIS/payroll classification setup
+leave requests/approvals
+legal/industrial advice linked to Sheet A
+management approval
+Organisation document-control record
+other relevant evidence in the populated work package
+participant records
+participant records where sampled
+participant template
+participant template risk rating where supplied
+Primary: period-correct Award/industrial instrument
+PRODA reporting evidence
+PRODA/Commission submission evidence
+PRODA/Commission submission/reporting evidence
+rate authority
+review approvals
+selected participant template
+selected template
+Service Delivery approval record
+Sheet A authority
+Sheet A determination schedule
+Sheet A evidence schedule
+support approvals
+system configuration evidence
+system use evidence
+system_document_control
+template_contract
+User request/work package
+user supplied parameters where permitted
+Work package
+work package status
+work-package evidence and parameters
+worker profile authority model
+workflow evidence
+written approvals
+
+## free_prose_not_a_source (399)
+ABC data
+ABC/behaviour data
+ABC/QABF records
+actual-duty evidence where relevant
+allied-health progress notes where supplied
+ambulance/hospital/police records where supplied
+APO record
+APO records
+APO review
+APO review record
+APO review/sign-off
+APO review/sign-off record
+applicable authority
+appointment records
+appointment/clinical follow-up
+appointment/follow-up records
+approval/endorsement records
+approval/review evidence
+Approved controlled documents
+approved goal record
+approved goal records
+approved participant goal record
+approved ratio
+approved ROC
+approved support model
+Approved support source
+approved/evidenced ROC
+approved/proposed support model
+aspiration_evidence
+attachment/evidence files supplied upstream
+attendance
+attendance records
+audit-readiness or regulatory-change referrals where relevant
+audit/readiness evidence
+authorisation_record
+authorised medication record
+Authority evidence
+authority evidence
+Authority source
+authority source
+barriers/variance evidence
+baseline evidence
+Behaviour data
+behaviour support records
+cancellation records
+cancellation/no-show records
+Cancellation/no-show/refusal records
+cancellation/refusal/no-show records
+cancellations
+CAPA records
+choking_evidence
+classification/progression records
+clinical escalation records
+Clinical input
+Clinical records
+clinical review record
+Clinical/health evidence
+clinical/health notes where supplied
+clinical/medical record
+Clinical/medication evidence
+clinical/medication record
+clinical/medication record where relevant
+clinical/medication records
+clinical/medication_record where relevant
+clinical_record
+clock-in/out
+closure evidence
+Closure evidence
+closure records
+codes
+communication-supported consultation record
+communication-supported consultation records
+community access records
+competency
+competency evidence
+competency records
+competency/training_record
+complaint records
+complaints/grievances
+compliance/governance record
+conduct/misconduct records
+conflicting source evidence
+Consent/authority record
+consent_or_authority_record
+Consultation evidence
+Consultation record
+Consultation records
+controlled document history
+controlled-medication competency evidence
+current price/line-item authority
+Current provider records
+current rates
+current RP authority
+current-state evidence
+current/proposed support model
+currentness/supersession evidence
+delivered support records
+delivery evidence
+document control
+Document transfer records
+documentation transfer
+domain-owner evidence
+domain-owner input
+effectiveness review records
+electronic medication administration record
+employer/entity evidence
+employment period evidence
+employment status records
+enterprise agreement where applicable
+equipment records
+equipment/property records
+escalation records
+evidence index/location records
+Evidence record
+exit interview/record
+Exit request
+exit/transfer record
+Exit/transfer record
+Exit/transfer records
+exit/transfer request
+expected evidence map
+Fair Work/FWC/FWO authority evidence
+Fair Work/FWC/FWO evidence
+family/representative feedback
+FBA
+FBA if available
+feedback records
+finance records
+finance review
+founder decision
+founder_decision
+funding balances
+funding capacity
+funding gap/surplus
+funding-period evidence
+funding/support evidence
+funding/support model analysis
+funding/utilisation analysis
+Goal source
+goals review evidence
+governance escalation records
+Governance records
+governance records
+governance review
+GP/pharmacy correspondence where supplied
+GP/pharmacy records
+Guardian/nominee/representative record
+health observations
+Health/clinical evidence where relevant
+health/mealtime/medication risk evidence
+historical implementation evidence
+historical/superseded source
+Home and Living/SIL funding evidence
+hospital discharge info
+hospitalisation/appointment records
+house/service review evidence
+Implementation evidence
+implementation evidence
+implementation records
+implementation samples
+incident evidence
+incident record
+incident records
+Incident records
+incident trends
+incident trends where relevant
+Incident/behaviour evidence
+incident/case evidence
+incident/complaint evidence where relevant
+incident/complaint trends
+incident/complaint/safeguarding/RP evidence where in scope
+incident/falls evidence
+incident/risk evidence
+incident/risk records
+incident/safeguarding evidence
+incident/safeguarding interface
+incident/safeguarding record
+incident/safeguarding records
+incident/safeguarding/governance evidence
+incident/variance records
+incident_record
+incident_record where applicable
+incidents
+investigation records where supplied
+leave balances
+legal advice where supplied
+legal/external advice where supplied
+legal/industrial advice where supplied. Corroborating: organisational chart
+legal/professional advice where supplied
+management follow-up
+manager/on-call record
+mealtime records
+medical record
+medical records
+medical/fitness evidence where applicable
+medical_record
+Medication authority evidence
+Medication evidence
+Medication evidence where relevant
+medication observations
+medication purpose evidence
+medication record reference
+Medication records
+medication records
+medication stock record
+medication training record
+medication/health records
+medication/health/mealtime/risk/emergency evidence
+meeting/board records
+missed-dose record
+monitoring reviews
+monthly RP usage records
+NDIS Practice Standards or applicable standards where supplied
+NDIS/support documentation where relevant
+NDIS/support evidence
+new authority source
+operational monitoring
+operational observations
+operational records
+operations/service delivery review
+Organisation registration evidence
+organisational role evidence
+organisational scope evidence
+other baseline evidence
+other current employment records supplied upstream
+other current SIL implementation evidence
+other relevant authoritative tenant evidence
+other supplied physical-health records or professional health instructions
+other transition-specific evidence
+Participant account
+participant account
+Participant consultation
+participant feedback
+Participant feedback
+participant goals
+participant health records
+Participant outcome evidence
+Participant outcomes
+participant preferences
+participant support evidence
+participant voice
+participant-specific competency
+participant/family feedback
+participant/family/staff feedback
+participant/representative acknowledgement
+participant/representative feedback
+participant/representative input
+participant/site/program records
+participant/staff confirmation
+participant/workforce/cohort evidence where relevant
+participant_account
+participation/progress evidence
+payroll records
+pharmacy return/disposal record
+PIP records
+position description
+previous Goals and Outcomes Progress Review
+previous review evidence
+previous_authorisation
+prior classification review
+prior obligation mapping
+professional authority documents
+professional recommendation
+Property records
+property/access-return records
+property/setup records
+proposed ROC
+provider record
+Provider records
+qualification record
+qualification records
+readiness checks
+Readiness work reference
+receiving confirmation
+receiving-provider confirmation
+receiving-provider confirmations
+receiving-provider records
+refresher record
+refrigerated storage evidence
+refusal record
+Refusal records
+region/intensity
+registration conditions
+regulator guidance/advisory material where relevant
+regulator requirements
+regulator/authority evidence
+related professional work products
+relevant policies
+replacement allocation records
+replacement records
+representative feedback
+representative work records
+Representative/family consultation
+representative/family feedback
+representative_input
+resignation/termination records
+restrictive-practice records where supplied
+retained authority evidence
+retained source/reference
+return-to-work records
+review records
+review_record
+Risk evidence
+risk evidence
+Risk records
+risk records
+risk/safeguarding evidence
+ROC
+ROC evidence
+roster evidence where supplied
+roster/support-delivery evidence where relevant
+RP authority
+RP evidence
+RP records
+RP risk evidence
+RP usage data
+RP usage records
+rp_usage_record
+safeguarding records
+safeguarding_record
+selected participant/provider template
+service booking/payment records where supplied
+service delivery evidence
+service delivery records
+Service Delivery review
+service records
+Service records
+service-delivery evidence
+service-delivery model
+service-delivery records
+service/funding evidence
+service/process maps
+service/site/staffing records
+shared support allocation evidence
+shift allocation
+shift allocations
+site evidence
+Site/environment evidence
+site/environment evidence
+site/environment observations
+site/house readiness evidence
+site/service evidence where sampled
+specialist records
+specialist review evidence
+specialist review requests
+staff allocation records
+staff competency record
+staff competency records
+staff competency/training records
+staff feedback
+Staff implementation records
+staff observations
+Staff observations
+staff/manager reflection
+staff_observation
+staffing records
+staffing/capacity evidence
+staffing/site readiness evidence
+stakeholder records
+stock/accountability record
+storage record
+storage/security records
+supervision records
+supervision/delegation records
+support documents
+support evidence
+support line item
+support model
+support model alignment
+support needs evidence
+support strategies
+support strategy
+support-needs evidence
+supporting specialist input where required
+training and competency records
+training competency records
+training records
+Training records
+Training/competency record
+training/competency records
+training/credential records
+transfer documents
+transfer record
+transition documentation
+transition evidence
+transition ID
+transition request
+User/work request
+utilisation data
+utilisation records
+variation history
+VSP/RIDS/equivalent records
+WHS/psychosocial records
+witness_account
+Work request
+work request
+workforce records
+workforce records where sampled
+WorkSafe requirement

@@ -16,6 +16,7 @@ import { decideMixedCapabilityAccess } from "../../services/capabilityAccessDeci
 // Sprint 27 — Execution dispatch
 import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
 import { cancelTaskExecution } from "../../services/executionService.js";
+import { resolveOutcomeBlueprintSet } from "../../services/workBlueprintService.js";
 import { randomUUID } from "crypto";
 
 const router = Router({ mergeParams: true });
@@ -57,6 +58,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       idempotencyKey,
       allowDuplicate,
       sourceUserRequest,
+      outcomeCanonicalIntent,
       subjectParticipantIds,
       relatedParticipantIds,
       guardianContextParticipantIds,
@@ -69,6 +71,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       idempotencyKey?: string;
       allowDuplicate?: boolean;
       sourceUserRequest?: string;
+      outcomeCanonicalIntent?: string;
       subjectParticipantIds?: string[];
       relatedParticipantIds?: string[];
       guardianContextParticipantIds?: string[];
@@ -80,6 +83,14 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
 
     if (!title || typeof title !== "string" || title.trim().length < 3) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "title must be at least 3 characters." } });
+      return;
+    }
+
+    const outcomeResolution = typeof outcomeCanonicalIntent === "string" && outcomeCanonicalIntent.trim()
+      ? await resolveOutcomeBlueprintSet(outcomeCanonicalIntent.trim(), ctx.tenantId)
+      : null;
+    if (outcomeCanonicalIntent && !outcomeResolution) {
+      res.status(400).json({ error: { code: "OUTCOME_NOT_FOUND", message: "Outcome could not be resolved." } });
       return;
     }
 
@@ -153,6 +164,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       idempotencyKey: requestIdempotencyKey,
       allowDuplicate: allowDuplicate === true,
       sourceUserRequest,
+      outcomeResolution,
       subjectParticipantIds,
       relatedParticipantIds,
       guardianContextParticipantIds,

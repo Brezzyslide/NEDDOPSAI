@@ -688,7 +688,7 @@ describe("CompletedWorkExportService", () => {
     }]);
     mockDb.execute.mockResolvedValue({
       rows: [{
-        displayName: "Michael Rocca",
+        displayName: "Micheal Rocca",
         preferredName: null,
         externalParticipantId: null,
         metadata: {},
@@ -758,13 +758,13 @@ describe("CompletedWorkExportService", () => {
     expect(call.metadata.format).toBe("docx");
   });
 
-  it("uses the bound participant record for DOCX and PDF cover values", async () => {
+  it("uses Support Plan Meeting identity and bound participant details for DOCX and PDF cover values", async () => {
     const carePlanMarkdown = [
       "# Michael Rocca Care Plan",
       "",
       "## Support Plan Meeting",
       "",
-      "Client’s Name: Body Value Date of Birth 24/08/1975 Gender: Male Language Spoken: English",
+      "Client’s Name: Michael Rocca Date of Birth 24/08/1975 Gender: Male Language Spoken: English",
       "NDIS Number: 430324461 Diagnosis: Moderate Intellectual Disability People Present: not recorded",
       "Plan Date: 10 November 2026 Date for Review: 25/11/2026",
       "",
@@ -793,6 +793,7 @@ describe("CompletedWorkExportService", () => {
 
     for (const output of [docxXml, pdfText]) {
       expect(output).toContain("Michael Rocca");
+      expect(output).not.toContain("Micheal Rocca");
       expect(output).toContain("430324461");
       expect(output).toContain("24/08/1975");
       expect(output).toContain("10 November 2026");

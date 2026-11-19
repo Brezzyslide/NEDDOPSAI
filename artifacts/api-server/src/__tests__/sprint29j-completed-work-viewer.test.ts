@@ -429,7 +429,7 @@ describe("Sprint 29J — Export MIME types and content", () => {
     expect(declaration).not.toBeNull();
     expect(declaration?.markdown).toContain("No behaviour support plan was found in the retrieved organisation library or task evidence.");
     expect(declaration?.markdown).toContain("Uncategorised participant document cited as evidence: Michael Rocca Comprehensive Behaviour Support Plan.");
-    expect(declaration?.markdown).toContain("Review and recategorise this document if it is the required document.");
+    expect(declaration?.markdown).toContain("Review and recategorise this document if it satisfies the missing evidence requirement.");
     expect(declaration?.missingCategories[0]).toMatchObject({
       category: "behaviour_support_plan",
       uncategorisedParticipantDocumentsCited: ["Michael Rocca Comprehensive Behaviour Support Plan"],
@@ -491,10 +491,95 @@ describe("Sprint 29J — Export MIME types and content", () => {
     expect(declaration).not.toBeNull();
     expect(declaration?.markdown).toContain("No behaviour support plan was found in the retrieved organisation library or task evidence.");
     expect(declaration?.markdown).toContain("Uncategorised participant document cited as evidence: Participant uploaded support document.");
-    expect(declaration?.markdown).toContain("Review and recategorise this document if it is the required document.");
+    expect(declaration?.markdown).toContain("Review and recategorise this document if it satisfies the missing evidence requirement.");
     expect(declaration?.missingCategories[0]).toMatchObject({
       category: "behaviour_support_plan",
       uncategorisedParticipantDocumentsCited: ["Participant uploaded support document"],
+    });
+  });
+
+  it("14e. Server-derived evidence gap declaration quotes section source documents when no verified evidence exists", () => {
+    const declaration = buildDeterministicEvidenceGapDeclaration({
+      contract: {
+        blueprint: {
+          evidenceContract: {
+            requiredEvidenceCategories: ["allied_health_report", "intake_form"],
+          },
+        },
+        sections: [{
+          sectionCode: "PURPOSE_SCOPE_EVIDENCE",
+          title: "Purpose, Scope and Evidence Considered",
+          sortOrder: 20,
+          evidenceRequirements: {
+            requiredEvidenceCategories: ["allied_health_report", "intake_form"],
+            sourceDocuments: "[PURPOSE_SCOPE - Purpose and Scope]\nFounder requirement; template metadata; work package parameters\n\n[EVIDENCE_INFORMATION_CONSIDERED - Evidence / Information Considered]\nwork-package evidence including medical reports; GP reports; specialist reports; allied-health reports; hospital/discharge reports; health assessments; care/support plans; Behaviour Support Plans; risk assessments; clinical plans; incident evidence; participant/family information; progress/case information; appointment/follow-up records; other supplied physical-health records or professional health instructions.",
+          },
+        }],
+        template: null,
+        mode: "create",
+      } as any,
+      evidencePack: { chunks: [], totalChunks: 0 } as any,
+      deliverableSections: [{
+        requirementId: "purpose-scope-evidence",
+        heading: "Purpose, Scope and Evidence Considered",
+        content: "No retrieved evidence was available.",
+      }],
+    });
+
+    expect(declaration).not.toBeNull();
+    expect(declaration?.markdown).toContain("No allied health report was found in the retrieved organisation library or task evidence.");
+    expect(declaration?.markdown).toContain("No intake form was found in the retrieved organisation library or task evidence.");
+    expect(declaration?.markdown).toContain("### Sections with no verified evidence");
+    expect(declaration?.markdown).toContain("No verified evidence was found for the following sections in the retrieved organisation library or task evidence:");
+    expect(declaration?.markdown).toContain("- Purpose, Scope and Evidence Considered");
+    expect(declaration?.markdown).not.toContain("[PURPOSE_SCOPE - Purpose and Scope]");
+    expect(declaration?.markdown).not.toContain("work-package evidence including medical reports; GP reports; specialist reports; allied-health reports");
+    expect(declaration?.missingSectionSourceDocuments[0]).toMatchObject({
+      sectionCode: "PURPOSE_SCOPE_EVIDENCE",
+      sectionTitle: "Purpose, Scope and Evidence Considered",
+      expectedSourceDocuments: expect.stringContaining("work-package evidence including medical reports; GP reports; specialist reports; allied-health reports"),
+      reasonCode: "section_source_documents_no_verified_evidence",
+    });
+  });
+
+  it("14f. Server-derived evidence gap declaration quotes section source documents even when no categories are mapped", () => {
+    const declaration = buildDeterministicEvidenceGapDeclaration({
+      contract: {
+        blueprint: {
+          evidenceContract: {
+            requiredEvidenceCategories: [],
+          },
+        },
+        sections: [{
+          sectionCode: "REVIEW_DETAILS",
+          title: "Review Details",
+          sortOrder: 10,
+          evidenceRequirements: {
+            requiredEvidenceCategories: [],
+            sourceDocuments: "Current authority work package supplied upstream; Acts/statutes; regulations; rules; legislative instruments; mandatory standards; regulator requirements; registration conditions; codes; industrial instruments; contractual/funding requirements; regulator guidance/advisory material where relevant; organisation/customer legislative or obligation register; policy/control/register mappings; organisational scope evidence; service/activity/register evidence; participant/workforce/cohort evidence where relevant; currentness/supersession evidence; legal/external advice where supplied; prior obligation mapping; audit-readiness or regulatory-change referrals where relevant.",
+          },
+        }],
+        template: null,
+        mode: "review",
+      } as any,
+      evidencePack: { chunks: [], totalChunks: 0 } as any,
+      deliverableSections: [{
+        requirementId: "review-details",
+        heading: "Review Details",
+        content: "No retrieved evidence was available.",
+      }],
+    });
+
+    expect(declaration).not.toBeNull();
+    expect(declaration?.missingCategories).toEqual([]);
+    expect(declaration?.markdown).toContain("No verified evidence was found for the following sections in the retrieved organisation library or task evidence:");
+    expect(declaration?.markdown).toContain("- Review Details");
+    expect(declaration?.markdown).not.toContain("Current authority work package supplied upstream; Acts/statutes; regulations; rules; legislative instruments; mandatory standards");
+    expect(declaration?.missingSectionSourceDocuments[0]).toMatchObject({
+      sectionCode: "REVIEW_DETAILS",
+      sectionTitle: "Review Details",
+      expectedSourceDocuments: expect.stringContaining("Current authority work package supplied upstream; Acts/statutes; regulations; rules; legislative instruments; mandatory standards"),
+      reasonCode: "section_source_documents_no_verified_evidence",
     });
   });
 });

@@ -23,6 +23,7 @@ import {
   resolveSubjectParticipantForTaskRequest,
 } from "./taskParticipantService.js";
 import type { ApprovalType, TaskState, TaskPriority } from "@workspace/shared";
+import type { ResolvedOutcomeBlueprintSet } from "./workBlueprintService.js";
 
 type DbClient = typeof db;
 
@@ -42,6 +43,7 @@ export interface CreateTaskInput {
   subjectParticipantIds?: string[];
   relatedParticipantIds?: string[];
   guardianContextParticipantIds?: string[];
+  outcomeResolution?: ResolvedOutcomeBlueprintSet | null;
 }
 
 export interface TaskWithPlan {
@@ -310,6 +312,8 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     workIntentKey,
     sourceUserRequest: input.sourceUserRequest,
     source: input.originatingModule ?? "task_centre",
+    outcomeResolution: input.outcomeResolution ?? undefined,
+    resolvedBlueprintSet: input.outcomeResolution?.blueprintSet ?? undefined,
     explicitSeparate: input.allowDuplicate === true,
     createdAt: new Date().toISOString(),
     participantConfirmation: subjectParticipantIds.length > 0

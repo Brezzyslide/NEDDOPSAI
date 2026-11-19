@@ -22,11 +22,11 @@
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import {
-  listBlueprints,
+  listOutcomeBlueprintDescriptors,
   createCustomBlueprint,
   updateCustomBlueprint,
-  getBlueprintById,
   getBlueprintForRole,
+  resolveOutcomeBlueprintSet,
   archiveBlueprint,
   restoreBlueprint,
   cloneBlueprint,
@@ -77,7 +77,7 @@ router.get(
       const ctx = req.tenantContext!;
       const { search, status, specialist, sort, includeArchived } = req.query as Record<string, string | undefined>;
 
-      const blueprints = await listBlueprints(ctx.tenantId, {
+      const blueprints = await listOutcomeBlueprintDescriptors(ctx.tenantId, {
         search,
         status: status as any,
         specialist,
@@ -86,6 +86,28 @@ router.get(
       });
 
       res.json({ blueprints: filterBlueprintsForRole(blueprints as any, blueprintAccessContext(req)) });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Resolve outcome requirements ────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/work-blueprints/outcomes/:canonicalIntent",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { canonicalIntent } = req.params as { canonicalIntent: string };
+      const outcome = await resolveOutcomeBlueprintSet(decodeURIComponent(canonicalIntent), ctx.tenantId);
+      if (!outcome) {
+        res.status(404).json({ error: { code: "OUTCOME_NOT_FOUND", message: "Outcome not found." } });
+        return;
+      }
+      res.json({ outcome });
     } catch (err) {
       next(err);
     }

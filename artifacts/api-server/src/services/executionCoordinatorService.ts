@@ -101,6 +101,32 @@ function readOriginatingConversationId(task: { metadata?: unknown } | null | und
     : null;
 }
 
+function readTaskOutcomeResolution(task: { metadata?: unknown } | null | undefined): {
+  canonicalIntent?: string;
+  blueprintId?: string;
+} {
+  const metadata = task?.metadata && typeof task.metadata === "object"
+    ? task.metadata as Record<string, unknown>
+    : null;
+  const taskCreation = metadata?.taskCreation && typeof metadata.taskCreation === "object"
+    ? metadata.taskCreation as Record<string, unknown>
+    : null;
+  const outcomeResolution = taskCreation?.outcomeResolution && typeof taskCreation.outcomeResolution === "object"
+    ? taskCreation.outcomeResolution as Record<string, unknown>
+    : null;
+  const blueprintSet = Array.isArray(outcomeResolution?.blueprintSet)
+    ? outcomeResolution.blueprintSet as Array<Record<string, unknown>>
+    : [];
+  const firstBlueprint = blueprintSet[0];
+  const canonicalIntent = typeof outcomeResolution?.canonicalIntent === "string" && outcomeResolution.canonicalIntent.trim()
+    ? outcomeResolution.canonicalIntent.trim()
+    : undefined;
+  const blueprintId = typeof firstBlueprint?.id === "string" && firstBlueprint.id.trim()
+    ? firstBlueprint.id.trim()
+    : undefined;
+  return { canonicalIntent, blueprintId };
+}
+
 async function postExecutionFailureToConversationSurfaces(input: {
   organizationId: string;
   conversationId?: string;
@@ -1137,9 +1163,14 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     const plan = taskId
       ? await getTaskPlanOrNull(taskId, organizationId, "background_canonical_intent")
       : null;
+    const task = taskId
+      ? await getTaskById(taskId, organizationId).catch(() => null)
+      : null;
+    const outcomeResolution = readTaskOutcomeResolution(task);
     const planIntent = readTaskPlanIntent(plan);
     const canonicalIntent =
       input.canonicalIntent ??
+      outcomeResolution.canonicalIntent ??
       deriveProfessionalIntentKey(userRequest, planIntent) ??
       planIntent ??
       undefined;
@@ -1197,6 +1228,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       requesterRole,
       userRequest,
       canonicalIntent,
+      blueprintId: outcomeResolution.blueprintId,
       conversationId,
       originConversationId: input.originConversationId,
       correlationId,

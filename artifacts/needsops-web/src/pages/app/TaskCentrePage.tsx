@@ -26,7 +26,39 @@ interface CreateTaskBody {
   originatingModule?: string;
   allowDuplicate?: boolean;
   sourceUserRequest?: string;
+  outcomeCanonicalIntent?: string;
   subjectParticipantIds?: string[];
+}
+
+interface BlueprintDescriptor {
+  id: string;
+  code: string;
+  title: string;
+  family: string | null;
+  purpose: string | null;
+  outcomeLabel: string | null;
+  requiresParticipant: boolean;
+  composesWith: string[];
+  canonicalIntent: string | null;
+  requiredEvidenceCategories?: string[];
+}
+
+interface ResolvedOutcome {
+  canonicalIntent: string;
+  outcomeLabel: string;
+  blueprintSet: Array<{
+    id: string;
+    code: string;
+    title: string;
+    family: string | null;
+    canonicalIntent: string | null;
+    outcomeLabel: string | null;
+    requiresParticipant: boolean;
+    composesWith: string[];
+    requiredEvidenceCategories: string[];
+  }>;
+  requiresParticipant: boolean;
+  requiredEvidenceCategories: string[];
 }
 
 type CreateTaskResult =
@@ -68,13 +100,44 @@ const PRIORITY_BADGE: Record<string, string> = {
   urgent: "text-red-400",
 };
 
+const EVIDENCE_CATEGORY_LABELS: Record<string, string> = {
+  allied_health_report: "Allied health report",
+  behaviour_support_plan: "Behaviour support plan",
+  care_plan: "Care plan",
+  health_support_plan: "Health support plan",
+  home_safety_checklist: "Home safety checklist",
+  intake_form: "Intake form",
+  mealtime_management_risk_assessment: "Mealtime management risk assessment",
+  ndis_plan: "NDIS plan",
+  other_participant_document: "Participant document categorised as other",
+  restrictive_practice_authorisation: "Restrictive practice authorisation",
+  risk_assessment: "Risk assessment",
+  service_agreement: "Service agreement",
+  strengths_based_questionnaire: "Strengths-based questionnaire",
+};
+
+function evidenceCategoryLabel(category: string): string {
+  const normalised = category.trim().toLowerCase();
+  return EVIDENCE_CATEGORY_LABELS[normalised] ?? category
+    .split("_")
+    .filter(Boolean)
+    .map(part => {
+      if (part === "ndis") return "NDIS";
+      if (part === "whs") return "WHS";
+      if (part === "ot") return "OT";
+      return `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
+    })
+    .join(" ");
+}
+
 export default function TaskCentrePage() {
   const { slug } = useParams<{ slug: string }>();
   const [, setLocation] = useLocation();
   const apiFetch = useAuthFetch();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
-  const [selectedCarePlanParticipantId, setSelectedCarePlanParticipantId] = useState("");
+  const [selectedCanonicalIntent, setSelectedCanonicalIntent] = useState("");
+  const [selectedParticipantId, setSelectedParticipantId] = useState("");
 
   const currentTab = STATE_TABS[activeTab]!;
 
@@ -97,6 +160,46 @@ export default function TaskCentrePage() {
     staleTime: 60_000,
   });
 
+  const outcomesQuery = useQuery({
+    queryKey: ["task-centre-outcomes", slug],
+    queryFn: async () => {
+      const response = await apiFetch(`/v1/organisations/${slug}/work-blueprints`);
+      if (!response.ok) throw new Error("Failed to load outcomes");
+      const payload = await response.json();
+      const seen = new Set<string>();
+      return ((payload?.blueprints ?? []) as BlueprintDescriptor[])
+        .filter(blueprint => Boolean(blueprint.outcomeLabel?.trim()) && Boolean(blueprint.canonicalIntent?.trim()))
+        .filter(blueprint => {
+          const intent = blueprint.canonicalIntent!;
+          if (seen.has(intent)) return false;
+          seen.add(intent);
+          return true;
+        });
+    },
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 60_000,
+  });
+
+  const outcomeOptions = outcomesQuery.data ?? [];
+  const selectedOutcome = outcomeOptions.find(outcome => outcome.canonicalIntent === selectedCanonicalIntent) ?? null;
+
+  const outcomeResolutionQuery = useQuery({
+    queryKey: ["task-centre-outcome-resolution", slug, selectedCanonicalIntent],
+    queryFn: async () => {
+      const response = await apiFetch(`/v1/organisations/${slug}/work-blueprints/outcomes/${encodeURIComponent(selectedCanonicalIntent)}`);
+      if (!response.ok) throw new Error("Failed to resolve outcome requirements");
+      const payload = await response.json();
+      return payload?.outcome as ResolvedOutcome;
+    },
+    enabled: !!slug && !!selectedCanonicalIntent,
+    staleTime: 60_000,
+  });
+
+  const resolvedOutcome = outcomeResolutionQuery.data ?? null;
+  const outcomeBlueprintSet = resolvedOutcome?.blueprintSet ?? [];
+  const requiresParticipant = resolvedOutcome?.requiresParticipant === true;
+  const requiredEvidenceCategories = resolvedOutcome?.requiredEvidenceCategories ?? [];
+
   const createMutation = useMutation({
     mutationFn: async (body: CreateTaskBody): Promise<CreateTaskResult> => {
       const response = await apiFetch(`/v1/organisations/${slug}/tasks`, {
@@ -111,34 +214,41 @@ export default function TaskCentrePage() {
       return { kind: "created", task: payload?.task };
     },
     onSuccess: () => {
-      setSelectedCarePlanParticipantId("");
+      setSelectedCanonicalIntent("");
+      setSelectedParticipantId("");
       qc.invalidateQueries({ queryKey: ["tasks", slug] });
     },
   });
 
   const tasks: any[] = data?.tasks ?? [];
-  const createParticipantCarePlan = () => {
-    if (!selectedCarePlanParticipantId) return;
-    const requestText = "Create a participant-specific care plan.";
+  const createOutcomeTask = () => {
+    if (!selectedOutcome) return;
+    if (requiresParticipant && !selectedParticipantId) return;
+    const label = selectedOutcome.outcomeLabel ?? selectedOutcome.title;
+    const requestText = `Create ${label}.`;
     createMutation.mutate({
-      title: "Create participant-specific care plan",
+      title: `Create ${label}`,
       description: requestText,
       priority: "normal",
-      originatingModule: "task_centre_direct_care_plan",
+      originatingModule: "task_centre_outcome_create",
       allowDuplicate: true,
       sourceUserRequest: requestText,
-      subjectParticipantIds: [selectedCarePlanParticipantId],
+      outcomeCanonicalIntent: selectedOutcome.canonicalIntent ?? undefined,
+      subjectParticipantIds: requiresParticipant ? [selectedParticipantId] : undefined,
     });
   };
 
   const participantOptions = participantsQuery.data ?? [];
-  const selectedCarePlanParticipant = participantOptions.find(
-    participant => participant.id === selectedCarePlanParticipantId,
+  const selectedParticipant = participantOptions.find(
+    participant => participant.id === selectedParticipantId,
   );
-  const canCreateCarePlan =
-    Boolean(selectedCarePlanParticipantId) &&
-    !participantsQuery.isLoading &&
-    !participantsQuery.isError &&
+  const canCreateOutcome =
+    Boolean(selectedOutcome) &&
+    Boolean(resolvedOutcome) &&
+    (!requiresParticipant || Boolean(selectedParticipantId)) &&
+    !outcomeResolutionQuery.isLoading &&
+    !outcomesQuery.isLoading &&
+    (!requiresParticipant || (!participantsQuery.isLoading && !participantsQuery.isError)) &&
     !createMutation.isPending;
 
   return (
@@ -155,53 +265,121 @@ export default function TaskCentrePage() {
         <div className="mb-6 bg-[#112033] border border-[#1E3A5F] rounded-xl p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="flex-1">
-              <h2 className="text-[#E2E8F0] font-semibold text-sm">Create participant care plan</h2>
+              <h2 className="text-[#E2E8F0] font-semibold text-sm">Create outcome</h2>
               <p className="text-[#64748B] text-xs mt-1">
-                Starts a fresh care-plan task directly with the selected participant already bound.
+                Starts a task from blueprint declarations. Only outcomes with an authored label are available.
               </p>
-              <label className="text-[#64748B] text-xs mt-3 mb-1 block" htmlFor="care-plan-participant">
-                Participant
+              <label className="text-[#64748B] text-xs mt-3 mb-1 block" htmlFor="task-outcome">
+                Outcome
               </label>
               <select
-                id="care-plan-participant"
-                value={selectedCarePlanParticipantId}
-                onChange={e => setSelectedCarePlanParticipantId(e.target.value)}
-                disabled={participantsQuery.isLoading || participantsQuery.isError || participantOptions.length === 0}
+                id="task-outcome"
+                value={selectedCanonicalIntent}
+                onChange={e => {
+                  setSelectedCanonicalIntent(e.target.value);
+                  setSelectedParticipantId("");
+                }}
+                disabled={outcomesQuery.isLoading || outcomesQuery.isError || outcomeOptions.length === 0}
                 className="w-full max-w-xl bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50 disabled:opacity-50"
               >
                 <option value="">
-                  {participantsQuery.isLoading
-                    ? "Loading participants..."
-                    : participantOptions.length === 0
-                      ? "No participants available"
-                      : "Select a participant"}
+                  {outcomesQuery.isLoading
+                    ? "Loading outcomes..."
+                    : outcomeOptions.length === 0
+                      ? "No outcomes available"
+                      : "Select an outcome"}
                 </option>
-                {participantOptions.map(participant => {
-                  const label = participant.displayName ?? participant.preferredName ?? "Unnamed participant";
-                  const external = participant.externalParticipantId ? ` (${participant.externalParticipantId})` : "";
+                {outcomeOptions.map(outcome => {
+                  const label = outcome.outcomeLabel ?? outcome.title;
                   return (
-                    <option key={participant.id} value={participant.id}>
-                      {label}{external}
+                    <option key={outcome.canonicalIntent ?? outcome.id} value={outcome.canonicalIntent ?? ""}>
+                      {label}
                     </option>
                   );
                 })}
               </select>
-              {selectedCarePlanParticipant && (
+              {selectedOutcome && (
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] p-3">
+                    <p className="text-[#94A3B8] text-xs font-semibold uppercase">Resolved blueprint set</p>
+                    <div className="mt-2 space-y-1">
+                      {outcomeBlueprintSet.map(blueprint => (
+                        <p key={blueprint.id} className="text-[#E2E8F0] text-xs">
+                          {blueprint.title}
+                          <span className="ml-2 text-[#64748B] font-mono">{blueprint.code}</span>
+                        </p>
+                      ))}
+                      {outcomeResolutionQuery.isLoading && (
+                        <p className="text-[#64748B] text-xs">Resolving blueprint set...</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] p-3">
+                    <p className="text-[#94A3B8] text-xs font-semibold uppercase">Required evidence</p>
+                    {requiredEvidenceCategories.length === 0 ? (
+                      <p className="mt-2 text-[#64748B] text-xs">No required document categories declared.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-1">
+                        {requiredEvidenceCategories.map(category => (
+                          <li key={category} className="text-[#E2E8F0] text-xs">
+                            {evidenceCategoryLabel(category)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+              {requiresParticipant && (
+                <>
+                  <label className="text-[#64748B] text-xs mt-3 mb-1 block" htmlFor="outcome-participant">
+                    Participant
+                  </label>
+                  <select
+                    id="outcome-participant"
+                    value={selectedParticipantId}
+                    onChange={e => setSelectedParticipantId(e.target.value)}
+                    disabled={participantsQuery.isLoading || participantsQuery.isError || participantOptions.length === 0}
+                    className="w-full max-w-xl bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50 disabled:opacity-50"
+                  >
+                    <option value="">
+                      {participantsQuery.isLoading
+                        ? "Loading participants..."
+                        : participantOptions.length === 0
+                          ? "No participants available"
+                          : "Select a participant"}
+                    </option>
+                    {participantOptions.map(participant => {
+                      const label = participant.displayName ?? participant.preferredName ?? "Unnamed participant";
+                      const external = participant.externalParticipantId ? ` (${participant.externalParticipantId})` : "";
+                      return (
+                        <option key={participant.id} value={participant.id}>
+                          {label}{external}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </>
+              )}
+              {selectedParticipant && (
                 <p className="text-[#64748B] text-xs mt-1">
-                  Bound participant ID: <span className="font-mono text-[#00D4FF]">{selectedCarePlanParticipant.id}</span>
+                  Bound participant ID: <span className="font-mono text-[#00D4FF]">{selectedParticipant.id}</span>
                 </p>
               )}
-              {participantsQuery.isError && (
+              {outcomesQuery.isError && (
+                <p className="text-red-400 text-xs mt-1">Could not load outcomes.</p>
+              )}
+              {requiresParticipant && participantsQuery.isError && (
                 <p className="text-red-400 text-xs mt-1">Could not load participants.</p>
               )}
             </div>
             <button
               type="button"
-              onClick={createParticipantCarePlan}
-              disabled={!canCreateCarePlan}
+              onClick={createOutcomeTask}
+              disabled={!canCreateOutcome}
               className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
             >
-              {createMutation.isPending ? "Creating…" : "Create care plan"}
+              {createMutation.isPending ? "Creating…" : "Create"}
             </button>
           </div>
         </div>
@@ -230,7 +408,7 @@ export default function TaskCentrePage() {
           <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-10 text-center">
             <p className="text-[#64748B] text-sm">No tasks in this category</p>
             {currentTab.label === "Active" && (
-              <p className="mt-3 text-[#64748B] text-xs">Use the participant selector above to create a care-plan task.</p>
+              <p className="mt-3 text-[#64748B] text-xs">Use the Create panel above to start an outcome task.</p>
             )}
           </div>
         ) : (

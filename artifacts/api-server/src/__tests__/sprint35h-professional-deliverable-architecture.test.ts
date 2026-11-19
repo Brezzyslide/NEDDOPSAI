@@ -3494,6 +3494,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).not.toContain("(?:clear|simple|calm)\\\\s+verbal");
     expect(engine).toContain("findChemicalRestraintAuthorisationEvidence");
     expect(engine).toContain("Chemical Restraint");
+    expect(engine).toContain("separate restrictive-practice authorisation evidence not found");
+    expect(engine).not.toContain("Authorisation recorded in BSP");
     expect(engine).not.toContain("Authorised as per BSP, valid until 2024-12-31");
   });
 

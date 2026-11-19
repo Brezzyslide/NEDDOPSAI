@@ -1149,24 +1149,7 @@ export class UnifiedExecutionEngine {
         };
       }
 
-      const canonicalSelection = await resolveCanonicalBlueprint(
-        effectiveCanonicalIntent ?? request.blueprintCode,
-        organizationId,
-        { executionSurfaceContext: blueprintExecutionContext },
-      );
-
-      if (canonicalSelection) {
-        blueprint = canonicalSelection.blueprint;
-        selectionMeta = {
-          method: "canonical",
-          confidence: canonicalSelection.confidence,
-          matchedKeywords: [],
-          fallbackUsed: canonicalSelection.fallbackUsed,
-          canonicalIntent: canonicalSelection.canonicalIntent,
-          blueprintFamily: canonicalSelection.blueprintFamily,
-          blueprintMode: canonicalSelection.blueprintMode,
-        };
-      } else if (request.blueprintId) {
+      if (request.blueprintId) {
         blueprint = await resolveBlueprintByIdForExecution(request.blueprintId, organizationId, {
           executionSurfaceContext: blueprintExecutionContext,
         });
@@ -1177,7 +1160,28 @@ export class UnifiedExecutionEngine {
           fallbackUsed: false,
           ...(blueprint ? deriveBlueprintSelectionFloor(blueprint, effectiveCanonicalIntent ?? request.blueprintCode ?? userRequest) : {}),
         };
-      } else if (request.blueprintCode) {
+      } else {
+        const canonicalSelection = await resolveCanonicalBlueprint(
+          effectiveCanonicalIntent ?? request.blueprintCode,
+          organizationId,
+          { executionSurfaceContext: blueprintExecutionContext },
+        );
+
+        if (canonicalSelection) {
+          blueprint = canonicalSelection.blueprint;
+          selectionMeta = {
+            method: "canonical",
+            confidence: canonicalSelection.confidence,
+            matchedKeywords: [],
+            fallbackUsed: canonicalSelection.fallbackUsed,
+            canonicalIntent: canonicalSelection.canonicalIntent,
+            blueprintFamily: canonicalSelection.blueprintFamily,
+            blueprintMode: canonicalSelection.blueprintMode,
+          };
+        }
+      }
+
+      if (!blueprint && request.blueprintCode) {
         const selection = await selectBlueprint(request.blueprintCode, organizationId, {
           executionSurfaceContext: blueprintExecutionContext,
         });
@@ -1191,7 +1195,7 @@ export class UnifiedExecutionEngine {
           blueprintFamily: selection.blueprintFamily,
           blueprintMode: selection.blueprintMode,
         };
-      } else {
+      } else if (!blueprint) {
         const selection = await selectBlueprint(userRequest, organizationId, {
           executionSurfaceContext: blueprintExecutionContext,
         });
@@ -7545,9 +7549,9 @@ function applyServerDerivedRestrictivePracticeRows(
       [[
         "Chemical restraint",
         "Medication used to influence behaviour as recorded in the participant's BSP.",
-        "Administer medication only as prescribed and only within the current BSP/medication authority.",
-        "Do not use medication outside the prescription, BSP or authorisation evidence, and do not invent any other restrictive practice.",
-      "Authorisation recorded in BSP; expiry/review date not recorded in retrieved evidence",
+        "Administer medication only as prescribed, follow the current BSP, and escalate if separate restrictive-practice authorisation evidence is not on file.",
+        "Do not use medication outside the prescription, BSP or separate authorisation evidence, and do not invent any other restrictive practice.",
+        "Practice recorded in BSP; separate restrictive-practice authorisation evidence not found in retrieved evidence",
         "Record and report use according to the BSP, medication administration process and restrictive-practice reporting requirements.",
       ]],
     ),

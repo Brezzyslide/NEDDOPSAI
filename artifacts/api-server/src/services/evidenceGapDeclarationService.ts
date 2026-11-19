@@ -21,6 +21,13 @@ export interface DeterministicEvidenceGapDeclaration {
     notAssessed: string[];
     uncategorisedParticipantDocumentsCited?: string[];
   }>;
+  missingSectionSourceDocuments: Array<{
+    sectionCode: string;
+    sectionTitle: string;
+    expectedSourceDocuments: string;
+    reasonCode: "section_source_documents_no_verified_evidence";
+    statement: string;
+  }>;
 }
 
 interface GapTarget {
@@ -141,30 +148,55 @@ export function buildDeterministicEvidenceGapDeclaration(input: {
     })
     .sort((left, right) => left.label.localeCompare(right.label));
 
-  if (missingCategories.length === 0) return null;
+  const missingSectionSourceDocuments = sectionSourceDocumentGaps({
+    sections: contract.sections,
+    requirements: profile?.requirements ?? [],
+    deliverableSections: input.deliverableSections,
+    evidencePack: input.evidencePack,
+  });
+
+  if (missingCategories.length === 0 && missingSectionSourceDocuments.length === 0) return null;
 
   return {
     missingCategories,
-    markdown: renderDeclarationMarkdown(missingCategories),
+    missingSectionSourceDocuments,
+    markdown: renderDeclarationMarkdown(missingCategories, missingSectionSourceDocuments),
   };
 }
 
 function renderDeclarationMarkdown(
   missingCategories: DeterministicEvidenceGapDeclaration["missingCategories"],
+  missingSectionSourceDocuments: DeterministicEvidenceGapDeclaration["missingSectionSourceDocuments"],
 ): string {
-  const rows = missingCategories.map((item) => [
+  const categoryRows = missingCategories.map((item) => [
     escapeMarkdownTableCell(item.statement),
     escapeMarkdownTableCell(item.notAssessed.join("; ")),
   ]);
-  return [
+  const sectionRows = missingSectionSourceDocuments.map((item) => escapeMarkdownListItem(item.sectionTitle));
+  const parts = [
     DECLARATION_HEADING,
     "",
     DECLARATION_PREAMBLE,
     "",
+  ];
+  if (categoryRows.length > 0) {
+    parts.push(
     "| Missing required evidence | Requirements or sections not assessed |",
     "| --- | --- |",
-    ...rows.map(([missing, notAssessed]) => `| ${missing} | ${notAssessed} |`),
-  ].join("\n");
+      ...categoryRows.map(([missing, notAssessed]) => `| ${missing} | ${notAssessed} |`),
+      "",
+    );
+  }
+  if (sectionRows.length > 0) {
+    parts.push(
+      "### Sections with no verified evidence",
+      "",
+      "No verified evidence was found for the following sections in the retrieved organisation library or task evidence:",
+      "",
+      ...sectionRows.map((section) => `- ${section}`),
+    );
+  }
+  return parts.join("\n").trimEnd();
 }
 
 function categoriesPresentInEvidence(evidencePack?: EvidencePack | null): Set<string> {
@@ -233,6 +265,93 @@ function uncategorisedParticipantDocumentTitles(
     if (title) titles.add(title.trim());
   }
   return Array.from(titles).sort((left, right) => left.localeCompare(right));
+}
+
+function sectionSourceDocumentGaps(input: {
+  sections: BlueprintSection[];
+  requirements: DeliverableRequirement[];
+  deliverableSections?: PerRequirementDeliverableSection[] | null;
+  evidencePack?: EvidencePack | null;
+}): DeterministicEvidenceGapDeclaration["missingSectionSourceDocuments"] {
+  const requirementIdsBySection = new Map<string, Set<string>>();
+  for (const requirement of input.requirements) {
+    if (!requirement.sourceBlueprintSection) continue;
+    const existing = requirementIdsBySection.get(requirement.sourceBlueprintSection) ?? new Set<string>();
+    existing.add(requirement.id);
+    requirementIdsBySection.set(requirement.sourceBlueprintSection, existing);
+  }
+
+  return input.sections
+    .map((section) => {
+      const expectedSourceDocuments = authoredSourceDocumentsForSection(section);
+      if (!expectedSourceDocuments) return null;
+      if (sectionHasVerifiedEvidence({
+        section,
+        requirementIds: requirementIdsBySection.get(section.sectionCode),
+        deliverableSections: input.deliverableSections,
+        evidencePack: input.evidencePack,
+      })) {
+        return null;
+      }
+      return {
+        sectionCode: section.sectionCode,
+        sectionTitle: section.title,
+        expectedSourceDocuments,
+        reasonCode: "section_source_documents_no_verified_evidence" as const,
+        statement: `${section.title} — no verified evidence was found for this section in the retrieved organisation library or task evidence.`,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((left, right) => {
+      const leftSection = input.sections.find((section) => section.sectionCode === left.sectionCode);
+      const rightSection = input.sections.find((section) => section.sectionCode === right.sectionCode);
+      return (leftSection?.sortOrder ?? 0) - (rightSection?.sortOrder ?? 0)
+        || left.sectionCode.localeCompare(right.sectionCode);
+    });
+}
+
+function authoredSourceDocumentsForSection(section: BlueprintSection): string | null {
+  const raw = section.evidenceRequirements?.sourceDocuments;
+  if (typeof raw !== "string") return null;
+  const normalised = raw.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+  return normalised.length > 0 ? normalised : null;
+}
+
+function sectionHasVerifiedEvidence(input: {
+  section: BlueprintSection;
+  requirementIds?: Set<string>;
+  deliverableSections?: PerRequirementDeliverableSection[] | null;
+  evidencePack?: EvidencePack | null;
+}): boolean {
+  const matchingSections = (input.deliverableSections ?? []).filter((deliverableSection) =>
+    deliverableSectionMatchesBlueprintSection(deliverableSection, input.section, input.requirementIds));
+  if (matchingSections.length === 0) return false;
+
+  const chunkIds = new Set((input.evidencePack?.chunks ?? []).map((chunk) => chunk.chunkId));
+  for (const deliverableSection of matchingSections) {
+    if ((deliverableSection.evidenceSources ?? []).some((source) =>
+      source.citationMode !== "BLUEPRINT_AUTHORED" && source.chunkId && chunkIds.has(source.chunkId))) {
+      return true;
+    }
+    if ((deliverableSection.structuredRows ?? []).some((row) =>
+      (row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION")
+      && row.chunkId
+      && chunkIds.has(row.chunkId))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function deliverableSectionMatchesBlueprintSection(
+  deliverableSection: PerRequirementDeliverableSection,
+  blueprintSection: BlueprintSection,
+  requirementIds?: Set<string>,
+): boolean {
+  const requirementId = deliverableSection.requirementId?.trim();
+  if (requirementId && requirementIds?.has(requirementId)) return true;
+  if (normaliseEvidenceCategory(requirementId ?? "") === normaliseEvidenceCategory(blueprintSection.sectionCode)) return true;
+  return normaliseEvidenceCategory(deliverableSection.heading ?? "") === normaliseEvidenceCategory(blueprintSection.title);
 }
 
 function requiredEvidenceCategoriesForSection(section: BlueprintSection): string[] {
@@ -308,4 +427,8 @@ function normaliseEvidenceCategory(value: string): string {
 
 function escapeMarkdownTableCell(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+}
+
+function escapeMarkdownListItem(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
